@@ -92,6 +92,20 @@ To update `tm-multiscript` to a new version:
 - Combined and maintained by TheMannster
 - Includes code and ideas from various open-source FiveM scripts (see individual module comments for attribution)
 
+## Changelog
+
+### v0.7.14
+- Added /client [id] command to drop a specified player with a custom message, usable from both server console and in-game (with permissions)
+- Added clientdrop module configuration and permissions to config.lua
+- Updated permission system to use QBCore.Functions.HasPermission with proper hierarchy (god > admin > mod > user)
+- Debug prints for permission checks are now controlled by the global Config.Debug flag
+- Improved debug output for permission checks
+- General code cleanup and improved permission handling
+
+### v0.7.15
+- Added car_list.lua with a comprehensive list of vanilla GTA V traffic vehicles for use with commands like monkeycar
+- Fixed errors related to missing or empty car_list.lua
+
 ---
 
 **Enjoy your all-in-one FiveM admin and fun script!** 

@@ -75,6 +75,20 @@ Config.Modules = {
         debug = false,
         displayName = "Hijab",
         maxAttempts = 5
+    },
+
+    -- Client Drop Module
+    clientdrop = {
+        enabled = true,
+        debug = false,
+        displayName = "Client Drop"
+    },
+
+    -- Monkeycar Module
+    monkeycar = {
+        enabled = true,
+        debug = false,
+        displayName = "Car o Monkeys"
     }
 }
 
@@ -89,5 +103,6 @@ Config.CommandPermissions = {
     permclean = "admin",
     permfix = "admin",
     fakejoin = "admin",
-    fakeleave = "admin"
+    fakeleave = "admin",
+    client = "admin"
 } 
