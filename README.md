@@ -7,7 +7,7 @@
 
 # tm-multiscript
 
-**Version:** 0.7.0  
+**Version:** 0.7.15  
 **Author:** TheMannster
 
 ## Description
