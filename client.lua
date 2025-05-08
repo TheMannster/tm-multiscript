@@ -365,57 +365,44 @@ end
 -- =========================
 -- monkeycar/client.lua
 -- =========================
-local carModels = {}
-local carListContent = LoadResourceFile(GetCurrentResourceName(), "car_list.lua")
-if carListContent then
-    print("Car List Content: ", carListContent)
-    carListContent = carListContent:gsub("^%s*(return%s+)", ""):gsub("%s*$", "")
-    local loadedList, err = load("return " .. carListContent)
-    if loadedList then
-        local success, result = pcall(loadedList)
-        if success then
-            carModels = result
-        else
-            print("Error executing car_list.lua: " .. result)
+if Config.Debug or (Config.Modules.monkeycar and Config.Modules.monkeycar.debug) then
+    print("[DEBUG] Resource root is: " .. GetCurrentResourceName())
+end
+local carModels = CarModels
+if Config.Modules.monkeycar and Config.Modules.monkeycar.enabled then
+    RegisterCommand('monkeycar', function()
+        local playerPed = PlayerPedId()
+        local playerCoords = GetEntityCoords(playerPed)
+        local randomIndex = math.random(1, #carModels)
+        local vehicleModel = GetHashKey(carModels[randomIndex])
+        local pedModel = GetHashKey('a_c_chimp')
+        if Config.Debug or (Config.Modules.monkeycar and Config.Modules.monkeycar.debug) then
+            print("[Monkeycar Debug] Spawning vehicle:", carModels[randomIndex])
         end
-    else
-        print("Error loading car_list.lua: " .. err)
-    end
-else
-    print("Failed to load car_list.lua: File not found!")
+        RequestModel(vehicleModel)
+        while not HasModelLoaded(vehicleModel) do
+            Wait(100)
+        end
+        RequestModel(pedModel)
+        while not HasModelLoaded(pedModel) do
+            Wait(100)
+        end
+        local found, roadCoords = GetNthClosestVehicleNode(playerCoords.x, playerCoords.y, playerCoords.z, math.random(1, 10), 0, 0, 0)
+        if not found then
+            print("Could not find a road node!")
+            return
+        end
+        local vehicle = CreateVehicle(vehicleModel, roadCoords.x, roadCoords.y, roadCoords.z, GetEntityHeading(playerPed), true, false)
+        SetVehicleOnGroundProperly(vehicle)
+        local monkey = CreatePedInsideVehicle(vehicle, 4, pedModel, -1, true, false)
+        TaskVehicleDriveWander(monkey, vehicle, 20.0, 786603)
+        SetModelAsNoLongerNeeded(vehicleModel)
+        SetModelAsNoLongerNeeded(pedModel)
+        TriggerEvent('chat:addMessage', {
+            args = { '^2Monkey spawned driving a random car!' }
+        })
+    end)
 end
-if not carModels or #carModels == 0 then
-    print("car_list.lua loaded but contains no vehicles!")
-end
-RegisterCommand('monkeycar', function()
-    local playerPed = PlayerPedId()
-    local playerCoords = GetEntityCoords(playerPed)
-    local randomIndex = math.random(1, #carModels)
-    local vehicleModel = GetHashKey(carModels[randomIndex])
-    local pedModel = GetHashKey('a_c_chimp')
-    RequestModel(vehicleModel)
-    while not HasModelLoaded(vehicleModel) do
-        Wait(100)
-    end
-    RequestModel(pedModel)
-    while not HasModelLoaded(pedModel) do
-        Wait(100)
-    end
-    local found, roadCoords = GetNthClosestVehicleNode(playerCoords.x, playerCoords.y, playerCoords.z, math.random(1, 10), 0, 0, 0)
-    if not found then
-        print("Could not find a road node!")
-        return
-    end
-    local vehicle = CreateVehicle(vehicleModel, roadCoords.x, roadCoords.y, roadCoords.z, GetEntityHeading(playerPed), true, false)
-    SetVehicleOnGroundProperly(vehicle)
-    local monkey = CreatePedInsideVehicle(vehicle, 4, pedModel, -1, true, false)
-    TaskVehicleDriveWander(monkey, vehicle, 20.0, 786603)
-    SetModelAsNoLongerNeeded(vehicleModel)
-    SetModelAsNoLongerNeeded(pedModel)
-    TriggerEvent('chat:addMessage', {
-        args = { '^2Monkey spawned driving a random car!' }
-    })
-end)
 
 -- =========================
 -- jerk/client.lua

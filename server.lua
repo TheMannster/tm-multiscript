@@ -71,15 +71,43 @@ local function ValidatePlayerId(source, targetId)
     return true
 end
 
--- Helper function to check command permissions
+-- Helper function to check command permissions using QBCore's HasPermission
 local function HasPermission(source, command)
     if not Config.UseQBCore or source == 0 then return true end
     if not Config.CommandPermissions[command] then return true end
-    
+
     local Player = QBCore.Functions.GetPlayer(source)
-    if not Player then return false end
-    
-    return Player.PlayerData.permission == Config.CommandPermissions[command]
+    if not Player then
+        if Config.Debug then print('^1[DEBUG] Player not found for source: ' .. source .. '^7') end
+        return false
+    end
+
+    local requiredPerm = Config.CommandPermissions[command]
+    -- Hierarchy: god > admin > mod > user
+    local hierarchy = {"god", "admin", "mod", "user"}
+    local requiredIndex = nil
+
+    for i, perm in ipairs(hierarchy) do
+        if perm == requiredPerm then
+            requiredIndex = i
+            break
+        end
+    end
+
+    if not requiredIndex then
+        if Config.Debug then print('^1[DEBUG] Required permission not found in hierarchy: ' .. tostring(requiredPerm) .. '^7') end
+        return false
+    end
+
+    -- Check if player has any permission at or above the required level
+    for i = 1, requiredIndex do
+        if QBCore.Functions.HasPermission(Player.PlayerData.source, hierarchy[i]) then
+            return true
+        end
+    end
+
+    if Config.Debug then print('^1[DEBUG] Player does not have required permission: ' .. requiredPerm .. '^7') end
+    return false
 end
 
 -- Helper function to check if a player is whitelisted for permclean
@@ -349,4 +377,62 @@ if Config.Modules.permclean.enabled then
             print('^2SYSTEM: Sent fake leave message^7')
         end
     end, false)
-end 
+end
+
+-- =========================
+-- Module: Client Drop
+-- =========================
+if Config.Modules.clientdrop.enabled then
+    RegisterCommand('client', function(source, args, rawCommand)
+        if not HasPermission(source, 'client') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
+
+        local targetId = tonumber(args[1])
+        if not ValidatePlayerId(source, targetId) then return end
+
+        DropPlayer(targetId, "500 OOPS: child died\nConnection closed by remote host.")
+        Notify(source, 'Dropped player ' .. targetId .. ' from the server', 'success')
+    end, false)
+end
+
+-- Update check (GitHub)
+local resourceName = GetCurrentResourceName()
+local currentVersion = GetResourceMetadata(resourceName, 'version', 0)
+local versionURL = "https://raw.githubusercontent.com/TheMannster/tm-multiscript/main/fxmanifest.lua"
+
+PerformHttpRequest(versionURL, function(statusCode, response, headers)
+    if statusCode == 200 and response then
+        local latestVersion = response:match("version%s+'([%d%.]+)'")
+        local function versionToTable(v)
+            local t = {}
+            for num in v:gmatch("%d+") do t[#t+1] = tonumber(num) end
+            return t
+        end
+        local function compareVersions(v1, v2)
+            local t1, t2 = versionToTable(v1), versionToTable(v2)
+            for i = 1, math.max(#t1, #t2) do
+                local n1, n2 = t1[i] or 0, t2[i] or 0
+                if n1 > n2 then return 1 end
+                if n1 < n2 then return -1 end
+            end
+            return 0
+        end
+        if latestVersion then
+            local cmp = compareVersions(currentVersion, latestVersion)
+            if cmp < 0 then
+                print("^3["..resourceName.."]^1 You are running an outdated version! ("..currentVersion.." → "..latestVersion..")^7")
+                print("^3["..resourceName.."]^0 Update at: https://github.com/TheMannster/tm-multiscript/releases^7")
+            elseif cmp > 0 then
+                print("^3["..resourceName.."]^6 You are running a development version! (local: "..currentVersion..", github: "..latestVersion..")^7")
+            else
+                print("^2["..resourceName.."] You are running the latest version. ("..currentVersion..")^7")
+            end
+        else
+            print("^1["..resourceName.."] Could not parse latest version from GitHub.^7")
+        end
+    else
+        print("^1["..resourceName.."] Could not check for updates (HTTP "..tostring(statusCode)..")^7")
+    end
+end, "GET") 
