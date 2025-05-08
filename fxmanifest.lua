@@ -3,14 +3,15 @@ game 'gta5'
 
 author 'TheMannster'
 description 'All of TheMannster Scripts all in one resource'
-version '0.7.0'
+version '0.7.15'
 
 client_scripts {
-    'client.lua'
+    'client/car_list.lua',
+    'client/client.lua'
 }
 
 server_scripts {
-    'server.lua'
+    'server/server.lua'
 }
 
 shared_scripts {
