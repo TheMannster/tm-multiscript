@@ -1,0 +1,7 @@
+{
+  "latest": "0.7.16",
+  "changelogs": {
+    "0.7.10": "Initial Release",
+    "0.7.16": "Improved performance, added fix for monkeycar"
+  }
+}
