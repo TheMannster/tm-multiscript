@@ -80,7 +80,7 @@ Citizen.CreateThread(function()
 
     local fwLabel
     if Framework.Name == "qbox" then
-        fwLabel = 'Qbox (native)'
+        fwLabel = 'Qbox [NATIVE]'
     elseif Framework.Name == "qbcore" then
         fwLabel = 'QBCore'
     elseif Framework.Name == "esx" then
