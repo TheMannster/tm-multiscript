@@ -7,7 +7,7 @@
 
 # tm-multiscript
 
-**Version:** 0.7.15  
+**Version:** 0.8.2  
 **Author:** TheMannster
 
 ## Description
@@ -65,6 +65,7 @@ Key sections include:
 - **SPED:** Explode or throw grenades at players.
 - **Permanent Clean/Fix:** Keep vehicles clean and fixed automatically.
 - **Fake Join/Leave:** Send fake join/leave messages to chat.
+- **Window Tint:** Apply and sync window tint for vehicles.
 - **Astley, Night's ERSS, and more:** Additional fun/admin scripts.
 
 ## Adding/Removing Modules
@@ -94,6 +95,41 @@ To update `tm-multiscript` to a new version:
 
 ## Changelog
 
+### v0.8.2
+- Added Window Tint module with `/tint [level]` command
+- Allows setting vehicle window tint from 0-6 with the following options:
+  - 0 = None
+  - 1 = Limo
+  - 2 = Light Smoke
+  - 3 = Dark Smoke
+  - 4 = Stock
+  - 5 = Pure Black
+  - 6 = Green
+- Tint changes are synced with all players
+- Added configuration options for default tint level
+- Improved window tint application for better compatibility with various vehicle types
+
+### v0.8.1
+- Added permission-based filtering for chat command suggestions
+- Commands are now only visible in the chat to players who have permission to use them
+- Command suggestions for disabled modules are no longer shown
+- Improved QBCore permission checking for command suggestions
+
+### v0.8.0
+- Created separate module for AIG command (previously part of monkeycar module)
+- Added dirty vehicle module with configurable dirt level
+- Fixed server-side error with fakejoin/fakeleave commands
+- Improved QBCore initialization and notification handling
+- Fixed client/server communication issues in several modules
+- Added proper permission checks for all commands
+- Enhanced error handling and added fallbacks for when QBCore is not available
+- Added better debug logging for troubleshooting
+- General code cleanup and optimization
+
+### v0.7.15
+- Added car_list.lua with a comprehensive list of vanilla GTA V traffic vehicles for use with commands like monkeycar
+- Fixed errors related to missing or empty car_list.lua
+
 ### v0.7.14
 - Added /client [id] command to drop a specified player with a custom message, usable from both server console and in-game (with permissions)
 - Added clientdrop module configuration and permissions to config.lua
@@ -101,10 +137,6 @@ To update `tm-multiscript` to a new version:
 - Debug prints for permission checks are now controlled by the global Config.Debug flag
 - Improved debug output for permission checks
 - General code cleanup and improved permission handling
-
-### v0.7.15
-- Added car_list.lua with a comprehensive list of vanilla GTA V traffic vehicles for use with commands like monkeycar
-- Fixed errors related to missing or empty car_list.lua
 
 ---
 

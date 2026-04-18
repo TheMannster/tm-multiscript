@@ -4,6 +4,90 @@ if GetCurrentResourceName() ~= "tm-multiscript" then
 end
 
 -- =========================
+-- Framework abstraction (auto-detects QBCore or ESX)
+-- =========================
+local Framework = { Name = "standalone", Core = nil }
+-- Legacy alias kept for any code that still reads QBCore directly; it will
+-- simply remain nil on ESX/standalone, and consumers should use Framework.*.
+local QBCore = nil
+
+Citizen.CreateThread(function()
+    local cfg = (Config.Framework or "auto"):lower()
+    if Config.UseQBCore == false and cfg == "auto" then cfg = "standalone" end
+    if cfg == "standalone" then return end
+
+    local tries = 0
+    while Framework.Core == nil and tries < 150 do
+        -- Qbox first so we don't latch onto the QBCore bridge when the
+        -- real framework is actually Qbox.
+        if (cfg == "auto" or cfg == "qbox") and GetResourceState('qbx_core') == 'started' then
+            Framework.Name, Framework.Core = "qbox", exports.qbx_core
+            print("^2[tm-multiscript]^0 Qbox initialized on client^7")
+            break
+        end
+        if (cfg == "auto" or cfg == "qbcore") and GetResourceState('qb-core') == 'started' then
+            local ok, core = pcall(function() return exports['qb-core']:GetCoreObject() end)
+            if ok and core then
+                Framework.Name, Framework.Core = "qbcore", core
+                QBCore = core -- keep legacy alias in sync
+                print("^2[tm-multiscript]^0 QBCore initialized on client^7")
+                break
+            end
+        end
+        if (cfg == "auto" or cfg == "esx") and GetResourceState('es_extended') == 'started' then
+            local ok, core = pcall(function() return exports['es_extended']:getSharedObject() end)
+            if ok and core then
+                Framework.Name, Framework.Core = "esx", core
+                print("^2[tm-multiscript]^0 ESX initialized on client^7")
+                break
+            end
+        end
+        Citizen.Wait(100)
+        tries = tries + 1
+    end
+end)
+
+function Framework.Notify(msg, typ, duration)
+    typ = typ or 'inform'
+    duration = duration or 5000
+    if Framework.Name == "qbox" then
+        -- Qbox canonically ships with ox_lib; use its notify if present.
+        if GetResourceState('ox_lib') == 'started' then
+            exports.ox_lib:notify({
+                title = 'tm-multiscript',
+                description = msg,
+                type = typ,
+                duration = duration
+            })
+            return
+        end
+        -- Fallback: Qbox bridges QBCore notify too.
+        TriggerEvent('QBCore:Notify', msg, typ, duration)
+        return
+    end
+    if Framework.Name == "qbcore" and Framework.Core then
+        Framework.Core.Functions.Notify(msg, typ, duration)
+    elseif Framework.Name == "esx" and Framework.Core then
+        Framework.Core.ShowNotification(msg)
+    else
+        TriggerEvent('chat:addMessage', { args = { '[tm-multiscript]', msg } })
+    end
+end
+
+function Framework.GetPlayerData()
+    if Framework.Name == "qbox" and Framework.Core then
+        local ok, data = pcall(function() return Framework.Core:GetPlayerData() end)
+        if ok and data then return data end
+        return nil
+    elseif Framework.Name == "qbcore" and Framework.Core then
+        return Framework.Core.Functions.GetPlayerData()
+    elseif Framework.Name == "esx" and Framework.Core then
+        return Framework.Core.GetPlayerData()
+    end
+    return nil
+end
+
+-- =========================
 -- tirepop/client.lua
 -- =========================
 -- Configuration values are now pulled from Config.Modules.tirepop
@@ -136,10 +220,7 @@ end)
 RegisterNetEvent('sped:seeGrenadeNotification')
 AddEventHandler('sped:seeGrenadeNotification', function()
     print("[DEBUG] Received seeGrenadeNotification event on client")
-    TriggerEvent('QBCore:Notify', 'You notice a grenade in their back pocket', 'error', 5000)
-    if exports['qb-core'] then
-        exports['qb-core']:Notify('You notice a grenade in their back pocket', 'error', 5000)
-    end
+    Framework.Notify('You notice a grenade in their back pocket', 'error', 5000)
 end)
 
 -- =========================
@@ -163,46 +244,76 @@ end)
 -- =========================
 -- permclean/client.lua
 -- =========================
-local permClean = false
-local permFix = false
+-- Track state per-vehicle (by netId) so the toggle always reflects the
+-- status of the car you're currently sitting in, not a single global flag.
+local permCleanVehicles = {}
+local permFixVehicles = {}
 RegisterCommand("permclean", function()
     local veh = GetVehiclePedIsIn(PlayerPedId(), false)
-    if veh ~= 0 then
-        permClean = not permClean
-        TriggerServerEvent("permvehicle:setCleanState", VehToNet(veh), permClean)
-        TriggerEvent("permvehicle:notify", "Permanent clean " .. (permClean and "enabled." or "disabled."))
-    else
+    if veh == 0 then
         TriggerEvent("permvehicle:notify", "You are not in a vehicle.")
+        return
     end
+    local netId = VehToNet(veh)
+    local newState = not permCleanVehicles[netId]
+    permCleanVehicles[netId] = newState or nil
+    TriggerServerEvent("permvehicle:setCleanState", netId, newState)
+    TriggerEvent("permvehicle:notify", "Permanent clean " .. (newState and "enabled." or "disabled.") .. " for this vehicle.")
 end)
 RegisterCommand("permfix", function()
     local veh = GetVehiclePedIsIn(PlayerPedId(), false)
-    if veh ~= 0 then
-        permFix = not permFix
-        TriggerServerEvent("permvehicle:setFixState", VehToNet(veh), permFix)
-        TriggerEvent("permvehicle:notify", "Permanent fix " .. (permFix and "enabled." or "disabled."))
-    else
+    if veh == 0 then
         TriggerEvent("permvehicle:notify", "You are not in a vehicle.")
+        return
     end
+    local netId = VehToNet(veh)
+    local newState = not permFixVehicles[netId]
+    permFixVehicles[netId] = newState or nil
+    TriggerServerEvent("permvehicle:setFixState", netId, newState)
+    TriggerEvent("permvehicle:notify", "Permanent fix " .. (newState and "enabled." or "disabled.") .. " for this vehicle.")
 end)
 RegisterNetEvent("permvehicle:doFix")
 AddEventHandler("permvehicle:doFix", function(netId)
     local vehicle = NetToVeh(netId)
-    if DoesEntityExist(vehicle) then
-        SetVehicleFixed(vehicle)
-        SetVehicleDeformationFixed(vehicle)
-        SetVehicleUndriveable(vehicle, false)
-        print("[permvehicle] Vehicle fixed (netId: " .. netId .. ")")
+    if not DoesEntityExist(vehicle) then return end
+
+    -- Only the network owner can actually fix the vehicle and have it sync
+    -- to everyone else (driver, passengers, nearby players). If we're not
+    -- the owner, try to grab control for a short window; if we can't, bail
+    -- out silently so the real owner handles it on their end.
+    if not NetworkHasControlOfEntity(vehicle) then
+        NetworkRequestControlOfEntity(vehicle)
+        local tries = 0
+        while not NetworkHasControlOfEntity(vehicle) and tries < 10 do
+            Wait(20)
+            tries = tries + 1
+        end
+        if not NetworkHasControlOfEntity(vehicle) then return end
     end
+
+    SetVehicleFixed(vehicle)
+    SetVehicleDeformationFixed(vehicle)
+    SetVehicleUndriveable(vehicle, false)
+    print("[permvehicle] Vehicle fixed (netId: " .. netId .. ")")
 end)
 RegisterNetEvent("permvehicle:doClean")
 AddEventHandler("permvehicle:doClean", function(netId)
     local vehicle = NetToVeh(netId)
-    if DoesEntityExist(vehicle) then
-        SetVehicleDirtLevel(vehicle, 0.0)
-        WashDecalsFromVehicle(vehicle, 1.0)
-        print("[permvehicle] Vehicle cleaned (netId: " .. netId .. ")")
+    if not DoesEntityExist(vehicle) then return end
+
+    if not NetworkHasControlOfEntity(vehicle) then
+        NetworkRequestControlOfEntity(vehicle)
+        local tries = 0
+        while not NetworkHasControlOfEntity(vehicle) and tries < 10 do
+            Wait(20)
+            tries = tries + 1
+        end
+        if not NetworkHasControlOfEntity(vehicle) then return end
     end
+
+    SetVehicleDirtLevel(vehicle, 0.0)
+    WashDecalsFromVehicle(vehicle, 1.0)
+    print("[permvehicle] Vehicle cleaned (netId: " .. netId .. ")")
 end)
 RegisterNetEvent("permvehicle:notify")
 AddEventHandler("permvehicle:notify", function(msg)
@@ -212,16 +323,36 @@ AddEventHandler("permvehicle:notify", function(msg)
     })
 end)
 
+-- Rebuild our per-vehicle memory from the server (handles resource restart /
+-- reconnect so the next /permfix or /permclean correctly toggles OFF a car
+-- that's already tracked server-side).
+RegisterNetEvent("permvehicle:syncState")
+AddEventHandler("permvehicle:syncState", function(cleanList, fixList)
+    permCleanVehicles = {}
+    permFixVehicles = {}
+    for _, netId in ipairs(cleanList or {}) do permCleanVehicles[netId] = true end
+    for _, netId in ipairs(fixList or {}) do permFixVehicles[netId] = true end
+end)
+
+AddEventHandler("onClientResourceStart", function(resource)
+    if resource == GetCurrentResourceName() then
+        TriggerServerEvent("permvehicle:requestState")
+    end
+end)
+
 -- =========================
 -- npcgun/client.lua
 -- =========================
-local QBCore = exports['qb-core']:GetCoreObject()
 RegisterNetEvent('qb-aig:client:attack', function(targetServerId)
     local myServerId = GetPlayerServerId(PlayerId())
     if targetServerId ~= myServerId then return end
+    
     local targetPed = PlayerPedId()
-    local tx, ty, tz = table.unpack(GetEntityCoords(targetPed))
-    local closestPed, pedDist = nil, 100.0
+    local targetCoords = GetEntityCoords(targetPed)
+    local attackRadius = Config.Modules.npcgun and Config.Modules.npcgun.attackRadius or 30.0
+    
+    -- Find a nearby pedestrian to attack the player
+    local closestPed, pedDist = nil, attackRadius
     local handle, ped = FindFirstPed()
     local success
     repeat
@@ -229,7 +360,7 @@ RegisterNetEvent('qb-aig:client:attack', function(targetServerId)
            and not IsPedAPlayer(ped) 
            and not IsPedInAnyVehicle(ped) 
            and not IsEntityDead(ped) then
-            local dist = #(vector3(tx,ty,tz) - GetEntityCoords(ped))
+            local dist = #(targetCoords - GetEntityCoords(ped))
             if dist < pedDist then
                 closestPed, pedDist = ped, dist
             end
@@ -237,11 +368,17 @@ RegisterNetEvent('qb-aig:client:attack', function(targetServerId)
         success, ped = FindNextPed(handle)
     until not success
     EndFindPed(handle)
+    
     if closestPed then
+        if Config.Modules.npcgun and Config.Modules.npcgun.debug then
+            print("[npcgun] Found pedestrian to attack player")
+        end
         GiveWeaponToPed(closestPed, GetHashKey('weapon_pistol'), 255, false, true)
         TaskCombatPed(closestPed, targetPed, 0, 16)
     end
-    local closestVeh = GetClosestVehicle(tx, ty, tz, 100.0, 0, 70)
+    
+    -- Also make vehicle occupants attack the player
+    local closestVeh = GetClosestVehicle(targetCoords.x, targetCoords.y, targetCoords.z, attackRadius, 0, 70)
     if DoesEntityExist(closestVeh) then
         local attackedCount = 0
         local maxSeats = GetVehicleMaxNumberOfPassengers(closestVeh)
@@ -253,6 +390,9 @@ RegisterNetEvent('qb-aig:client:attack', function(targetServerId)
                 GiveWeaponToPed(occ, GetHashKey('weapon_pistol'), 255, false, true)
                 TaskCombatPed(occ, targetPed, 0, 16)
                 attackedCount = attackedCount + 1
+                if Config.Modules.npcgun and Config.Modules.npcgun.debug then
+                    print("[npcgun] Vehicle occupant is now attacking player")
+                end
             end
         end
     end
@@ -423,7 +563,6 @@ end, false)
 -- =========================
 -- hijab/client.lua
 -- =========================
-local QBCore = exports['qb-core']:GetCoreObject()
 RegisterNetEvent('qb-hijacker:spawnHijacker')
 AddEventHandler('qb-hijacker:spawnHijacker', function(sourcePlayer)
     local playerPed = PlayerPedId()
@@ -449,25 +588,24 @@ AddEventHandler('qb-hijacker:spawnHijacker', function(sourcePlayer)
                 enteredVehicle = true
             else
                 attempts = attempts + 1
-                TriggerServerEvent('QBCore:Notify', sourcePlayer, "Hijacker is trying to enter the vehicle... Attempt: " .. attempts, "info")
+                TriggerServerEvent('hijacker:attemptNotify', sourcePlayer, attempts)
             end
         end
         if enteredVehicle then
             local driveAwayCoords = spawnCoords + vector3(100.0, 100.0, 0.0)
             TaskVehicleDriveToCoord(hijackerPed, vehicle, driveAwayCoords, 20.0, 1.0, GetEntityModel(vehicle), 786603, 1, true)
         else
-            TriggerServerEvent('QBCore:Notify', sourcePlayer, "Hijacker failed to get in the vehicle.", "error")
+            TriggerServerEvent('hijacker:failedNotify', sourcePlayer)
         end
         SetModelAsNoLongerNeeded(hijackerModel)
     else
-        TriggerServerEvent('QBCore:Notify', sourcePlayer, "The target player is not in a vehicle.", "error")
+        TriggerServerEvent('hijacker:noVehicleNotify', sourcePlayer)
     end
 end)
 
 -- =========================
 -- fuel/cl_fuel.lua
 -- =========================
-local QBCore = exports['qb-core']:GetCoreObject()
 RegisterNetEvent('custom-fuel:depleteFuel', function()
     local playerPed = PlayerPedId()
     local vehicle = GetVehiclePedIsIn(playerPed, false)
@@ -476,20 +614,19 @@ RegisterNetEvent('custom-fuel:depleteFuel', function()
             exports['LegacyFuel']:SetFuel(vehicle, 0.0)
         else
             print("LegacyFuel export not found.")
-            QBCore.Functions.Notify("Fuel system error", "error")
+            Framework.Notify("Fuel system error", "error")
         end
     else
-        QBCore.Functions.Notify("You are not in a vehicle", "error")
+        Framework.Notify("You are not in a vehicle", "error")
     end
 end)
 
 -- =========================
 -- fatjack/client/client.lua
 -- =========================
-local QBCore = exports['qb-core']:GetCoreObject()
 local function DebugNotify(message, type)
     if Config.Modules.fatjack and Config.Modules.fatjack.debug then
-        QBCore.Functions.Notify(message, type)
+        Framework.Notify(message, type)
     end
 end
 RegisterNetEvent('qb-hijack:client:Hijack', function(targetId)
@@ -566,17 +703,17 @@ end)
 -- =========================
 -- dirty/client.lua
 -- =========================
-local QBCore = exports['qb-core']:GetCoreObject()
 RegisterCommand("dirty", function()
     local playerPed = PlayerPedId()
     local vehicle = GetVehiclePedIsIn(playerPed, false)
     if vehicle ~= 0 then
-        SetVehicleDirtLevel(vehicle, 15.0)
+        local dirtLevel = Config.Modules.dirty and Config.Modules.dirty.dirtLevel or 15.0
+        SetVehicleDirtLevel(vehicle, dirtLevel)
         local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
-        TriggerServerEvent('syncVehicleDirt', vehicleNetId, 15.0)
-        QBCore.Functions.Notify('Your vehicle is now dirty!', 'success', 5000)
+        TriggerServerEvent('syncVehicleDirt', vehicleNetId, dirtLevel)
+        Framework.Notify('Your vehicle is now dirty!', 'success', 5000)
     else
-        QBCore.Functions.Notify('You are not in a vehicle!', 'error', 5000)
+        Framework.Notify('You are not in a vehicle!', 'error', 5000)
     end
 end, false)
 RegisterNetEvent('updateVehicleDirt')
@@ -668,8 +805,281 @@ end)
 -- joinfak/fakejoin.lua
 -- =========================
 RegisterCommand("fakejoin", function(source, args, rawCommand)
-    TriggerClientEvent("chatMessage", -1, "", { 162, 214, 11 }, "* " .. Config.Modules.joinfak.fakeName .. " joined")
+    TriggerServerEvent("joinfak:sendFakeJoin")
 end, false)
 RegisterCommand("fakeleave", function(source, args, rawCommand)
-    TriggerClientEvent("chatMessage", -1, "", { 162, 214, 11 }, "* " .. Config.Modules.joinfak.fakeName .. " left (Exiting)")
-end, false) 
+    TriggerServerEvent("joinfak:sendFakeLeave")
+end, false)
+
+-- =========================
+-- Command Suggestions
+-- =========================
+Citizen.CreateThread(function()
+    -- Give the framework a moment to initialize before we check groups.
+    Citizen.Wait(1000)
+
+    -- Function to check if player has permission for a command (client-side
+    -- best-effort check for whether to show chat suggestions; the server
+    -- still enforces the real permission check).
+    local function hasPermissionForCommand(command)
+        -- Standalone mode: no way to reliably check client-side, so show all.
+        if Framework.Name == "standalone" then return true end
+        if not Config.CommandPermissions[command] then return true end
+
+        local Player = Framework.GetPlayerData()
+        if not Player then return false end
+
+        local requiredPerm = Config.CommandPermissions[command]
+
+        if Framework.Name == "qbcore" then
+            local hierarchy = {"god", "admin", "mod", "user"}
+            local requiredIndex
+            for i, perm in ipairs(hierarchy) do
+                if perm == requiredPerm then requiredIndex = i break end
+            end
+            if not requiredIndex then return false end
+            for i = 1, requiredIndex do
+                if hierarchy[i] == "user" then return true end
+                if Player.permission == hierarchy[i] then return true end
+            end
+            return false
+        end
+
+        if Framework.Name == "esx" then
+            local playerGroup = Player.group or "user"
+            local neededGroup = (Config.ESXGroupMap and Config.ESXGroupMap[requiredPerm]) or "superadmin"
+            local ranks = { superadmin = 4, admin = 3, mod = 2, user = 1 }
+            return (ranks[playerGroup] or 0) >= (ranks[neededGroup] or 4)
+        end
+
+        if Framework.Name == "qbox" then
+            -- Client-side group info isn't reliably exposed on Qbox; the
+            -- server is the source of truth. Show suggestions to everyone
+            -- here and let the server's HasPermission reject unauthorized
+            -- use. (Players just won't be able to actually run it.)
+            return true
+        end
+
+        return false
+    end
+    
+    -- Tirepop module commands
+    if Config.Modules.tirepop and Config.Modules.tirepop.enabled then
+        if hasPermissionForCommand('tirepop') then
+            TriggerEvent('chat:addSuggestion', '/tirepop', 'Pop a specific tire on a player\'s vehicle', {
+                { name = 'id', help = 'Player ID (optional)' },
+                { name = 'tire', help = '1-4 or front/rear/left/right/all' }
+            })
+        end
+        
+        if hasPermissionForCommand('repairalltires') then
+            TriggerEvent('chat:addSuggestion', '/repairalltires', 'Repair all tires on a player\'s vehicle', {
+                { name = 'id', help = 'Player ID (optional)' }
+            })
+        end
+    end
+    
+    -- Slide module commands
+    if Config.Modules.slide and Config.Modules.slide.enabled then
+        if hasPermissionForCommand('slidecar') then
+            TriggerEvent('chat:addSuggestion', '/slidecar', 'Make a player\'s car slide', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+    
+    -- SPED module commands
+    if Config.Modules.sped and Config.Modules.sped.enabled then
+        if hasPermissionForCommand('explode') then
+            TriggerEvent('chat:addSuggestion', '/explode', 'Explode a player', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+        
+        if hasPermissionForCommand('grenade') then
+            TriggerEvent('chat:addSuggestion', '/grenade', 'Throw a grenade at a player', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+        
+        if hasPermissionForCommand('seegrenade') then
+            TriggerEvent('chat:addSuggestion', '/seegrenade', 'Send a grenade notification to a player', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+    
+    -- Permanent Clean/Fix module commands
+    if Config.Modules.permclean and Config.Modules.permclean.enabled then
+        if hasPermissionForCommand('permclean') then
+            TriggerEvent('chat:addSuggestion', '/permclean', 'Toggle permanent clean for your vehicle')
+        end
+        
+        if hasPermissionForCommand('permfix') then
+            TriggerEvent('chat:addSuggestion', '/permfix', 'Toggle permanent fix for your vehicle')
+        end
+        
+        TriggerEvent('chat:addSuggestion', '/tirefix', 'Fix all tires on your vehicle')
+    end
+    
+    -- Fake Join/Leave module commands
+    if Config.Modules.joinfak and Config.Modules.joinfak.enabled then
+        if hasPermissionForCommand('fakejoin') then
+            TriggerEvent('chat:addSuggestion', '/fakejoin', 'Send a fake join message')
+        end
+        
+        if hasPermissionForCommand('fakeleave') then
+            TriggerEvent('chat:addSuggestion', '/fakeleave', 'Send a fake leave message')
+        end
+    end
+    
+    -- Client Drop module commands
+    if Config.Modules.clientdrop and Config.Modules.clientdrop.enabled then
+        if hasPermissionForCommand('client') then
+            TriggerEvent('chat:addSuggestion', '/client', 'Drop a player from the server', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+    
+    -- NPC Gun module commands
+    if Config.Modules.npcgun and Config.Modules.npcgun.enabled then
+        if hasPermissionForCommand('aig') then
+            TriggerEvent('chat:addSuggestion', '/aig', 'Make nearby NPCs attack a player', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+    
+    -- Night's ERSS module commands
+    if Config.Modules.nights_erss and Config.Modules.nights_erss.enabled then
+        if hasPermissionForCommand('tgshoot') then
+            TriggerEvent('chat:addSuggestion', '/tgshoot', 'Get info about the AI shootout mode')
+        end
+        
+        TriggerEvent('chat:addSuggestion', '/toggleShoot', 'Toggle AI shootout mode')
+    end
+    
+    -- Hijab module commands
+    if Config.Modules.hijab and Config.Modules.hijab.enabled then
+        if hasPermissionForCommand('hijack') then
+            TriggerEvent('chat:addSuggestion', '/hijack', 'Send a hijacker to steal a player\'s vehicle', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+    
+    -- FatJack module commands
+    if hasPermissionForCommand('fatjack') then
+        TriggerEvent('chat:addSuggestion', '/fatjack', 'Send a fat person to hijack a player\'s vehicle', {
+            { name = 'id', help = 'Player ID' }
+        })
+    end
+    
+    -- Fuel module commands
+    if hasPermissionForCommand('nofuel') then
+        TriggerEvent('chat:addSuggestion', '/nofuel', 'Deplete a player\'s vehicle fuel', {
+            { name = 'id', help = 'Player ID' }
+        })
+    end
+    
+    -- Jerk module commands
+    TriggerEvent('chat:addSuggestion', '/jerk', 'Play a special animation')
+    
+    if hasPermissionForCommand('jerkify') then
+        TriggerEvent('chat:addSuggestion', '/jerkify', 'Send jerk command info to a player', {
+            { name = 'id', help = 'Player ID (optional)' }
+        })
+    end
+    
+    -- Dirty module commands
+    if Config.Modules.dirty and Config.Modules.dirty.enabled then
+        if hasPermissionForCommand('dirty') then
+            TriggerEvent('chat:addSuggestion', '/dirty', 'Make your current vehicle dirty')
+        end
+    end
+    
+    -- Window Tint module commands
+    if Config.Modules.tint and Config.Modules.tint.enabled then
+        if hasPermissionForCommand('tint') then
+            TriggerEvent('chat:addSuggestion', '/tint', 'Apply window tint to your vehicle', {
+                { name = 'level', help = '0=None, 1=Limo, 2=Light Smoke, 3=Dark Smoke, 4=Stock, 5=Pure Black, 6=Green' }
+            })
+        end
+    end
+    
+    -- Monkeycar module commands
+    if Config.Modules.monkeycar and Config.Modules.monkeycar.enabled then
+        TriggerEvent('chat:addSuggestion', '/monkeycar', 'Spawn a monkey driving a random car')
+    end
+end)
+
+-- =========================
+-- tint/client.lua
+-- =========================
+RegisterCommand("tint", function(source, args, rawCommand)
+    local playerPed = PlayerPedId()
+    local vehicle = GetVehiclePedIsIn(playerPed, false)
+    
+    if vehicle == 0 then
+        Framework.Notify('You need to be in a vehicle to use this command!', 'error', 5000)
+        return
+    end
+    
+    local tintLevel = tonumber(args[1])
+    -- If no tint level is specified, use the default from config
+    if not tintLevel then
+        tintLevel = Config.Modules.tint and Config.Modules.tint.defaultTint or 1
+    end
+    
+    -- Validate tint level (0-6 are valid window tints in GTA V)
+    if tintLevel < 0 or tintLevel > 6 then
+        Framework.Notify('Invalid tint level! Use a value between 0-6.', 'error', 5000)
+        return
+    end
+    
+    -- Apply mods directly
+    SetVehicleModKit(vehicle, 0)
+    SetVehicleWindowTint(vehicle, tintLevel)
+    
+    -- Force a refresh
+    local modIndex = GetVehicleMod(vehicle, 0)
+    SetVehicleMod(vehicle, 0, modIndex)
+    
+    -- Send to server for syncing with other players
+    local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
+    TriggerServerEvent('syncVehicleTint', vehicleNetId, tintLevel)
+    
+    -- Notify the player with the actual tint name
+    local tintNames = {
+        [0] = "None",
+        [1] = "Limo",
+        [2] = "Light Smoke",
+        [3] = "Dark Smoke", 
+        [4] = "Stock",
+        [5] = "Pure Black",
+        [6] = "Green"
+    }
+    
+    local tintName = tintNames[tintLevel] or "Unknown"
+    Framework.Notify('Window tint applied: ' .. tintName, 'success', 5000)
+end, false)
+
+-- Event to update vehicle tint when synced from server
+RegisterNetEvent('updateVehicleTint')
+AddEventHandler('updateVehicleTint', function(vehicleNetId, tintLevel)
+    local vehicle = NetworkGetEntityFromNetworkId(vehicleNetId)
+    if DoesEntityExist(vehicle) then
+        -- Apply the tint with mod kit
+        SetVehicleModKit(vehicle, 0)
+        SetVehicleWindowTint(vehicle, tintLevel)
+        
+        -- Force a refresh
+        local modIndex = GetVehicleMod(vehicle, 0)
+        SetVehicleMod(vehicle, 0, modIndex)
+        
+        if Config.Modules.tint and Config.Modules.tint.debug then
+            print("[tint] Updated tint for vehicle " .. vehicleNetId .. " to level " .. tintLevel)
+        end
+    end
+end) 

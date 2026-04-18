@@ -2,13 +2,21 @@ Config = {}
 
 -- General Settings
 Config.Debug = false -- Enable debug mode for all modules
-Config.UseQBCore = true -- Set to false if not using QBCore
+
+-- Framework detection
+-- "auto"       -> auto-detect Qbox > QBCore > ESX by checking which resource is running
+-- "qbox"       -> force Qbox (uses qbx_core natives + ox_lib for notifications when present)
+-- "qbcore"     -> force QBCore
+-- "esx"        -> force ESX
+-- "standalone" -> no framework (permissions fall back to ACE, notifications to chat)
+Config.Framework = "auto"
+Config.UseQBCore = true -- DEPRECATED, kept for backward compat. If set to false, acts as "standalone".
 
 -- Module Settings
 Config.Modules = {
     -- Tire Pop Module
     tirepop = {
-        enabled = true,
+        enabled = false,
         debug = false,
         displayName = "POP",
         soundVolume = 0.5,
@@ -17,7 +25,7 @@ Config.Modules = {
 
     -- Slide Car Module
     slide = {
-        enabled = true,
+        enabled = false,
         debug = false,
         displayName = "Slidey Cars?",
         forceAmount = 100.0 -- Force applied when sliding car
@@ -25,7 +33,7 @@ Config.Modules = {
 
     -- SPED Module
     sped = {
-        enabled = true,
+        enabled = false,
         debug = false,
         displayName = "SPED",
         explosionRadius = 100.0,
@@ -50,7 +58,7 @@ Config.Modules = {
     joinfak = {
         enabled = true,
         debug = false,
-        displayName = "Jerry2348",
+        displayName = "TheMannster",
         fakeName = "Mannfreddi" -- Name to use for fake join/leave messages
     },
 
@@ -63,7 +71,7 @@ Config.Modules = {
 
     -- Night's ERSS Module
     nights_erss = {
-        enabled = true,
+        enabled = false,
         debug = false,
         displayName = "tgshoot",
         radius = 50.0
@@ -71,7 +79,7 @@ Config.Modules = {
 
     -- Hijab Module
     hijab = {
-        enabled = true,
+        enabled = false,
         debug = false,
         displayName = "Hijab",
         maxAttempts = 5
@@ -81,7 +89,7 @@ Config.Modules = {
     clientdrop = {
         enabled = true,
         debug = false,
-        displayName = "Client Drop"
+        displayName = "Client?"
     },
 
     -- Monkeycar Module
@@ -89,20 +97,62 @@ Config.Modules = {
         enabled = true,
         debug = false,
         displayName = "Car o Monkeys"
+    },
+
+    -- NPC Gun Module
+    npcgun = {
+        enabled = false,
+        debug = false,
+        displayName = "AIG",
+        attackRadius = 30.0
+    },
+
+    -- Dirty Module
+    dirty = {
+        enabled = true,
+        debug = false,
+        displayName = "Dirty Vehicle",
+        dirtLevel = 15.0
+    },
+
+    -- Window Tint Module
+    tint = {
+        enabled = true,
+        debug = false,
+        displayName = "Window Tint",
+        defaultTint = 1 -- Default tint level if not specified (1 = Limo)
     }
 }
 
--- Command Permissions (if using QBCore)
+-- Maps the permission levels used in Config.CommandPermissions (which are
+-- written QBCore-style: god/admin/mod/user) onto ESX groups. Override here
+-- if your server uses custom groups. "user" effectively means "anyone".
+Config.ESXGroupMap = {
+    god   = "superadmin",
+    admin = "admin",
+    mod   = "admin",
+    user  = "user"
+}
+
+-- Command Permissions (if using QBCore / ESX)
 Config.CommandPermissions = {
-    tirepop = "admin", -- QBCore permission required
-    repairalltires = "admin",
-    slidecar = "admin",
-    explode = "admin",
-    grenade = "admin",
-    seegrenade = "admin",
-    permclean = "admin",
-    permfix = "admin",
-    fakejoin = "admin",
-    fakeleave = "admin",
-    client = "admin"
+    tirepop = "god", -- QBCore permission required
+    repairalltires = "god",
+    slidecar = "god",
+    explode = "god",
+    grenade = "god",
+    seegrenade = "god",
+    permclean = "god",
+    permfix = "god",
+    fakejoin = "god",
+    fakeleave = "god",
+    client = "god",
+    aig = "god",
+    tgshoot = "god",
+    hijack = "god",
+    fatjack = "god",
+    nofuel = "admin",
+    jerkify = "god",
+    dirty = "god",
+    tint = "admin" -- Admin permission required for window tint
 } 
