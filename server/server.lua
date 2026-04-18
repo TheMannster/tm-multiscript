@@ -146,31 +146,70 @@ local function ValidatePlayerId(source, targetId)
     return true
 end
 
+-- Resolve a module's configurable command name, falling back to the default
+-- if the module didn't define one. Internal permission/identifier strings
+-- (the second arg to HasPermission, the keys in Config.CommandPermissions)
+-- are intentionally NOT renamed -- only the actual command string changes.
+local function ModuleCmd(moduleKey, name, default)
+    local m = Config.Modules and Config.Modules[moduleKey]
+    if m and m.commands and m.commands[name] and m.commands[name] ~= "" then
+        return m.commands[name]
+    end
+    return default
+end
+
 -- Helper function to check command permissions (framework-aware)
 local function HasPermission(source, command)
     if source == 0 then return true end
     local requiredPerm = Config.CommandPermissions[command]
     if not requiredPerm then return true end
 
-    -- Qbox: prefer the native HasGroup export, fall back to ACE perms.
+    -- Qbox: check ACE perms (incl. universal command.allow) and the player's
+    -- Qbox group. Qbox doesn't ship a "god" group by default -- its top tier
+    -- is "admin" -- so we map the QBCore-style hierarchy through
+    -- Config.QboxGroupMap (override per-server if you actually use a god group).
     if Framework.Name == "qbox" then
+        if IsPlayerAceAllowed(source, 'command.allow') then return true end
+
         local hierarchy = {"god", "admin", "mod", "user"}
         local requiredIndex
         for i, perm in ipairs(hierarchy) do
             if perm == requiredPerm then requiredIndex = i break end
         end
         if not requiredIndex then return false end
+
+        local groupMap = Config.QboxGroupMap or { god = "admin", admin = "admin", mod = "mod", user = "user" }
+
+        local playerGroup
+        local okGP, ply = pcall(function() return Framework.Core:GetPlayer(source) end)
+        if okGP and ply and ply.PlayerData then
+            playerGroup = ply.PlayerData.group
+                or (ply.PlayerData.metadata and ply.PlayerData.metadata.group)
+        end
+
+        local groupRanks = { god = 1, admin = 2, mod = 3, user = 4 }
+
         for i = 1, requiredIndex do
-            local group = hierarchy[i]
-            if group == "user" then return true end
-            local okHG, has = pcall(function() return Framework.Core:HasGroup(source, group) end)
-            if okHG and has then return true end
-            if IsPlayerAceAllowed(source, 'group.' .. group) or
-               IsPlayerAceAllowed(source, 'qbx.' .. group) then
+            local tier = hierarchy[i]
+            local mapped = groupMap[tier] or tier
+            if tier == "user" or mapped == "user" then return true end
+
+            if playerGroup and groupRanks[playerGroup] and groupRanks[playerGroup] <= (groupRanks[mapped] or 99) then
+                return true
+            end
+
+            if IsPlayerAceAllowed(source, 'group.' .. tier)
+               or IsPlayerAceAllowed(source, 'qbx.' .. tier)
+               or IsPlayerAceAllowed(source, 'group.' .. mapped)
+               or IsPlayerAceAllowed(source, 'qbx.' .. mapped) then
                 return true
             end
         end
-        if Config.Debug then print('^1[DEBUG] Qbox player missing permission: ' .. requiredPerm .. '^7') end
+
+        if Config.Debug then
+            print(('^1[DEBUG] Qbox player missing permission: %s (group=%s)^7')
+                :format(tostring(requiredPerm), tostring(playerGroup)))
+        end
         return false
     end
 
@@ -293,7 +332,7 @@ if Config.Modules.tirepop.enabled then
         end
     end
 
-    RegisterCommand('tirepop', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('tirepop', 'pop', 'tirepop'), function(source, args, rawCommand)
         if not HasPermission(source, 'tirepop') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -310,7 +349,7 @@ if Config.Modules.tirepop.enabled then
         HandleTirePop(source, targetId, tireInput)
     end, false)
 
-    RegisterCommand('repairalltires', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('tirepop', 'repair', 'repairalltires'), function(source, args, rawCommand)
         if not HasPermission(source, 'repairalltires') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -349,7 +388,7 @@ end
 -- Module: Slide Car
 -- =========================
 if Config.Modules.slide.enabled then
-    RegisterCommand('slidecar', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('slide', 'slide', 'slidecar'), function(source, args, rawCommand)
         if not HasPermission(source, 'slidecar') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -372,7 +411,7 @@ end
 -- Module: SPED
 -- =========================
 if Config.Modules.sped.enabled then
-    RegisterCommand('explode', function(source, args)
+    RegisterCommand(ModuleCmd('sped', 'explode', 'explode'), function(source, args)
         if not HasPermission(source, 'explode') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -385,7 +424,7 @@ if Config.Modules.sped.enabled then
         Notify(source, 'Exploded player ' .. targetId, 'success')
     end, false)
 
-    RegisterCommand('grenade', function(source, args)
+    RegisterCommand(ModuleCmd('sped', 'grenade', 'grenade'), function(source, args)
         if not HasPermission(source, 'grenade') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -398,7 +437,7 @@ if Config.Modules.sped.enabled then
         Notify(source, 'Threw grenade at player ' .. targetId, 'success')
     end, false)
 
-    RegisterCommand('seegrenade', function(source, args)
+    RegisterCommand(ModuleCmd('sped', 'seegrenade', 'seegrenade'), function(source, args)
         if not HasPermission(source, 'seegrenade') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -499,7 +538,7 @@ if Config.Modules.permclean.enabled then
         end
     end)
 
-    RegisterCommand("permclean", function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('permclean', 'clean', 'permclean'), function(source, args, rawCommand)
         if not HasPermission(source, 'permclean') and not IsPermcleanWhitelisted(source) then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -507,7 +546,7 @@ if Config.Modules.permclean.enabled then
         -- ... existing code ...
     end, false)
 
-    RegisterCommand("permfix", function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('permclean', 'fix', 'permfix'), function(source, args, rawCommand)
         if not HasPermission(source, 'permfix') and not IsPermcleanWhitelisted(source) then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -524,7 +563,7 @@ end
 -- Module: Client Drop
 -- =========================
 if Config.Modules.clientdrop.enabled then
-    RegisterCommand('client', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('clientdrop', 'drop', 'client'), function(source, args, rawCommand)
         if not HasPermission(source, 'client') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -542,7 +581,7 @@ end
 -- Module: NPC Gun (AIG)
 -- =========================
 if Config.Modules.npcgun and Config.Modules.npcgun.enabled then
-    RegisterCommand('aig', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('npcgun', 'attack', 'aig'), function(source, args, rawCommand)
         if not HasPermission(source, 'aig') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -560,7 +599,7 @@ end
 -- Module: Night's ERSS
 -- =========================
 if Config.Modules.nights_erss and Config.Modules.nights_erss.enabled then
-    RegisterCommand('tgshoot', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('nights_erss', 'info', 'tgshoot'), function(source, args, rawCommand)
         if not HasPermission(source, 'tgshoot') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -576,7 +615,7 @@ end
 -- Module: Hijab
 -- =========================
 if Config.Modules.hijab and Config.Modules.hijab.enabled then
-    RegisterCommand('hijack', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('hijab', 'hijack', 'hijack'), function(source, args, rawCommand)
         if not HasPermission(source, 'hijack') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -609,56 +648,63 @@ end
 -- =========================
 -- Module: FatJack
 -- =========================
-RegisterCommand('fatjack', function(source, args, rawCommand)
-    if not HasPermission(source, 'fatjack') then
-        Notify(source, 'You do not have permission to use this command', 'error')
-        return
-    end
+if Config.Modules.fatjack and Config.Modules.fatjack.enabled then
+    RegisterCommand(ModuleCmd('fatjack', 'jack', 'fatjack'), function(source, args, rawCommand)
+        if not HasPermission(source, 'fatjack') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
 
-    local targetId = tonumber(args[1])
-    if not ValidatePlayerId(source, targetId) then return end
-    
-    TriggerClientEvent('qb-hijack:client:Hijack', targetId, targetId)
-    Notify(source, 'Sent fat person to hijack player ' .. targetId, 'success')
-end, false)
+        local targetId = tonumber(args[1])
+        if not ValidatePlayerId(source, targetId) then return end
+
+        TriggerClientEvent('qb-hijack:client:Hijack', targetId, targetId)
+        Notify(source, 'Sent fat person to hijack player ' .. targetId, 'success')
+    end, false)
+end
 
 -- =========================
 -- Module: Fuel
 -- =========================
-RegisterCommand('nofuel', function(source, args, rawCommand)
-    if not HasPermission(source, 'nofuel') then
-        Notify(source, 'You do not have permission to use this command', 'error')
-        return
-    end
+if Config.Modules.fuel and Config.Modules.fuel.enabled then
+    RegisterCommand(ModuleCmd('fuel', 'deplete', 'nofuel'), function(source, args, rawCommand)
+        if not HasPermission(source, 'nofuel') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
 
-    local targetId = tonumber(args[1])
-    if not ValidatePlayerId(source, targetId) then return end
-    
-    TriggerClientEvent('custom-fuel:depleteFuel', targetId)
-    Notify(source, 'Depleted fuel for player ' .. targetId, 'success')
-end, false)
+        local targetId = tonumber(args[1])
+        if not ValidatePlayerId(source, targetId) then return end
+
+        TriggerClientEvent('custom-fuel:depleteFuel', targetId)
+        Notify(source, 'Depleted fuel for player ' .. targetId, 'success')
+    end, false)
+end
 
 -- =========================
 -- Module: Jerk
 -- =========================
-RegisterCommand('jerkify', function(source, args, rawCommand)
-    if not HasPermission(source, 'jerkify') then
-        Notify(source, 'You do not have permission to use this command', 'error')
-        return
-    end
+if Config.Modules.jerk and Config.Modules.jerk.enabled then
+    RegisterCommand(ModuleCmd('jerk', 'send', 'jerkify'), function(source, args, rawCommand)
+        if not HasPermission(source, 'jerkify') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
 
-    local targetId = tonumber(args[1])
-    if not targetId then
-        targetId = source
-    end
-    
-    if not ValidatePlayerId(source, targetId) then return end
-    
-    TriggerClientEvent('chat:addMessage', targetId, {
-        args = { '[Animation]', 'Use /jerk to play a special animation.' }
-    })
-    Notify(source, 'Sent jerk command info to player ' .. targetId, 'success')
-end, false)
+        local targetId = tonumber(args[1])
+        if not targetId then
+            targetId = source
+        end
+
+        if not ValidatePlayerId(source, targetId) then return end
+
+        local jerkCmd = ModuleCmd('jerk', 'play', 'jerk')
+        TriggerClientEvent('chat:addMessage', targetId, {
+            args = { '[Animation]', 'Use /' .. jerkCmd .. ' to play a special animation.' }
+        })
+        Notify(source, 'Sent jerk command info to player ' .. targetId, 'success')
+    end, false)
+end
 
 -- =========================
 -- Module: Fake Join/Leave
@@ -689,7 +735,7 @@ if Config.Modules.joinfak and Config.Modules.joinfak.enabled then
     end)
     
     -- Also add direct commands for console use
-    RegisterCommand('fakejoin', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('joinfak', 'join', 'fakejoin'), function(source, args, rawCommand)
         if not HasPermission(source, 'fakejoin') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -703,7 +749,7 @@ if Config.Modules.joinfak and Config.Modules.joinfak.enabled then
         end
     end, false)
     
-    RegisterCommand('fakeleave', function(source, args, rawCommand)
+    RegisterCommand(ModuleCmd('joinfak', 'leave', 'fakeleave'), function(source, args, rawCommand)
         if not HasPermission(source, 'fakeleave') then
             Notify(source, 'You do not have permission to use this command', 'error')
             return
@@ -809,4 +855,92 @@ PerformHttpRequest(versionURL, function(statusCode, response, headers)
     else
         print("^1["..resourceName.."] Could not check for updates (HTTP "..tostring(statusCode)..")^7")
     end
-end, "GET") 
+end, "GET")
+
+-- =========================
+-- Module: Help (/tmhelp)
+-- =========================
+-- Walks Config.Modules and lists every command for currently-enabled modules.
+-- Permission-gated through Config.CommandPermissions.tmhelp (defaults to god).
+-- Command name itself is configurable via Config.HelpCommand.
+do
+    -- Static description table keyed by internal permission identifier
+    -- (NOT the user-renamed command). Add entries here when adding new
+    -- commands so /tmhelp picks them up.
+    local CommandDescriptions = {
+        -- moduleKey -> list of { permKey, cmdKey, default, description }
+        tirepop = {
+            { perm = 'tirepop',        cmdKey = 'pop',        default = 'tirepop',        desc = 'Pop a specific tire on a player\'s vehicle [id] [tire|keyword]' },
+            { perm = 'repairalltires', cmdKey = 'repair',     default = 'repairalltires', desc = 'Repair all tires on a player\'s vehicle [id]' },
+            { perm = 'tirefix',        cmdKey = 'fix',        default = 'tirefix',        desc = 'Fix all tires on your own vehicle' },
+        },
+        slide      = { { perm = 'slidecar',    cmdKey = 'slide',      default = 'slidecar',    desc = 'Make a player\'s car slide [id]' } },
+        sped = {
+            { perm = 'explode',    cmdKey = 'explode',    default = 'explode',    desc = 'Explode a player [id]' },
+            { perm = 'grenade',    cmdKey = 'grenade',    default = 'grenade',    desc = 'Throw a grenade at a player [id]' },
+            { perm = 'seegrenade', cmdKey = 'seegrenade', default = 'seegrenade', desc = 'Send a grenade notification to a player [id]' },
+        },
+        permclean = {
+            { perm = 'permclean', cmdKey = 'clean', default = 'permclean', desc = 'Toggle permanent clean for your vehicle' },
+            { perm = 'permfix',   cmdKey = 'fix',   default = 'permfix',   desc = 'Toggle permanent fix for your vehicle' },
+        },
+        joinfak = {
+            { perm = 'fakejoin',  cmdKey = 'join',  default = 'fakejoin',  desc = 'Send a fake join message' },
+            { perm = 'fakeleave', cmdKey = 'leave', default = 'fakeleave', desc = 'Send a fake leave message' },
+        },
+        clientdrop  = { { perm = 'client',      cmdKey = 'drop',       default = 'client',      desc = 'Drop a player from the server [id]' } },
+        npcgun      = { { perm = 'aig',         cmdKey = 'attack',     default = 'aig',         desc = 'Make nearby NPCs attack a player [id]' } },
+        nights_erss = {
+            { perm = 'tgshoot',     cmdKey = 'info',   default = 'tgshoot',     desc = 'Get info about the AI shootout mode' },
+            { perm = 'toggleShoot', cmdKey = 'toggle', default = 'toggleShoot', desc = 'Toggle AI shootout mode (self)' },
+        },
+        hijab     = { { perm = 'hijack',    cmdKey = 'hijack', default = 'hijack',    desc = 'Send a hijacker to steal a player\'s vehicle [id]' } },
+        dirty     = { { perm = 'dirty',     cmdKey = 'dirty',  default = 'dirty',     desc = 'Make your current vehicle dirty (syncs to all players)' } },
+        tint      = { { perm = 'tint',      cmdKey = 'tint',   default = 'tint',      desc = 'Apply window tint to your vehicle [0-6]' } },
+        monkeycar = { { perm = 'monkeycar', cmdKey = 'spawn',  default = 'monkeycar', desc = 'Spawn a monkey driving a random car' } },
+        fatjack   = { { perm = 'fatjack',   cmdKey = 'jack',   default = 'fatjack',   desc = 'Send a fat person to hijack a player\'s vehicle [id]' } },
+        fuel      = { { perm = 'nofuel',    cmdKey = 'deplete', default = 'nofuel',   desc = 'Deplete a player\'s vehicle fuel [id]' } },
+        jerk = {
+            { perm = 'jerk',    cmdKey = 'play', default = 'jerk',    desc = 'Play a special animation (self)' },
+            { perm = 'jerkify', cmdKey = 'send', default = 'jerkify', desc = 'Send jerk command info to a player [id, optional]' },
+        },
+    }
+
+    local helpCmd = (Config.HelpCommand and Config.HelpCommand ~= "" and Config.HelpCommand) or 'tmhelp'
+
+    RegisterCommand(helpCmd, function(source, args, rawCommand)
+        if not HasPermission(source, 'tmhelp') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
+
+        -- Build line list once, then deliver via chat (player) or print (console).
+        local lines = {}
+        table.insert(lines, '^5[tm-multiscript]^7 Commands from enabled modules:')
+
+        for moduleKey, entries in pairs(CommandDescriptions) do
+            local mod = Config.Modules and Config.Modules[moduleKey]
+            if mod and mod.enabled then
+                local label = mod.displayName or moduleKey
+                table.insert(lines, '^3[' .. label .. ']^7')
+                for _, entry in ipairs(entries) do
+                    local cmdName = ModuleCmd(moduleKey, entry.cmdKey, entry.default)
+                    local tier = (Config.CommandPermissions and Config.CommandPermissions[entry.perm]) or 'user'
+                    table.insert(lines, ('  ^2/%s^7 ^6(%s)^7 - %s'):format(cmdName, tier, entry.desc))
+                end
+            end
+        end
+
+        if source == 0 then
+            for _, line in ipairs(lines) do print(line) end
+            return
+        end
+
+        for _, line in ipairs(lines) do
+            TriggerClientEvent('chat:addMessage', source, {
+                args = { line },
+                color = { 255, 255, 255 }
+            })
+        end
+    end, false)
+end

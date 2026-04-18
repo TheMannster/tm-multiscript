@@ -3,6 +3,16 @@ if GetCurrentResourceName() ~= "tm-multiscript" then
     return
 end
 
+-- Resolve a module's configurable command name (see Config.Modules.<x>.commands).
+-- Falls back to the supplied default if the module didn't override it.
+local function ModuleCmd(moduleKey, name, default)
+    local m = Config.Modules and Config.Modules[moduleKey]
+    if m and m.commands and m.commands[name] and m.commands[name] ~= "" then
+        return m.commands[name]
+    end
+    return default
+end
+
 -- =========================
 -- Framework abstraction (auto-detects QBCore or ESX)
 -- =========================
@@ -152,7 +162,7 @@ AddEventHandler('tirepop:repairTires', function()
     end
 end)
 
-RegisterCommand('tirefix', function()
+RegisterCommand(ModuleCmd('tirepop', 'fix', 'tirefix'), function()
     local player = PlayerPedId()
     local vehicle = GetVehiclePedIsIn(player, false)
     if vehicle ~= 0 then
@@ -248,7 +258,7 @@ end)
 -- status of the car you're currently sitting in, not a single global flag.
 local permCleanVehicles = {}
 local permFixVehicles = {}
-RegisterCommand("permclean", function()
+RegisterCommand(ModuleCmd('permclean', 'clean', 'permclean'), function()
     local veh = GetVehiclePedIsIn(PlayerPedId(), false)
     if veh == 0 then
         TriggerEvent("permvehicle:notify", "You are not in a vehicle.")
@@ -260,7 +270,7 @@ RegisterCommand("permclean", function()
     TriggerServerEvent("permvehicle:setCleanState", netId, newState)
     TriggerEvent("permvehicle:notify", "Permanent clean " .. (newState and "enabled." or "disabled.") .. " for this vehicle.")
 end)
-RegisterCommand("permfix", function()
+RegisterCommand(ModuleCmd('permclean', 'fix', 'permfix'), function()
     local veh = GetVehiclePedIsIn(PlayerPedId(), false)
     if veh == 0 then
         TriggerEvent("permvehicle:notify", "You are not in a vehicle.")
@@ -404,7 +414,7 @@ end)
 local shootEnabled = false
 local radius = Config.Modules.nights_erss.radius
 local processedPeds = {}
-RegisterCommand("toggleShoot", function(source, args)
+RegisterCommand(ModuleCmd('nights_erss', 'toggle', 'toggleShoot'), function(source, args)
     shootEnabled = not shootEnabled
     if shootEnabled then
         print("[AI Shootout] Shooting mode enabled")
@@ -510,7 +520,7 @@ if Config.Debug or (Config.Modules.monkeycar and Config.Modules.monkeycar.debug)
 end
 local carModels = CarModels
 if Config.Modules.monkeycar and Config.Modules.monkeycar.enabled then
-    RegisterCommand('monkeycar', function()
+    RegisterCommand(ModuleCmd('monkeycar', 'spawn', 'monkeycar'), function()
         local playerPed = PlayerPedId()
         local playerCoords = GetEntityCoords(playerPed)
         local randomIndex = math.random(1, #carModels)
@@ -547,18 +557,20 @@ end
 -- =========================
 -- jerk/client.lua
 -- =========================
-RegisterCommand("jerk", function()
-    local playerPed = PlayerPedId()
-    local animDict = "switch@trevor@jerking_off"
-    local animName = "trev_jerking_off_loop"
-    RequestAnimDict(animDict)
-    while not HasAnimDictLoaded(animDict) do
-        Wait(100)
-    end
-    TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, -1, 49, 0, false, false, false)
-    Citizen.Wait(5000)
-    ClearPedTasks(playerPed)
-end, false)
+if Config.Modules.jerk and Config.Modules.jerk.enabled then
+    RegisterCommand(ModuleCmd('jerk', 'play', 'jerk'), function()
+        local playerPed = PlayerPedId()
+        local animDict = "switch@trevor@jerking_off"
+        local animName = "trev_jerking_off_loop"
+        RequestAnimDict(animDict)
+        while not HasAnimDictLoaded(animDict) do
+            Wait(100)
+        end
+        TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, -1, 49, 0, false, false, false)
+        Citizen.Wait(5000)
+        ClearPedTasks(playerPed)
+    end, false)
+end
 
 -- =========================
 -- hijab/client.lua
@@ -640,61 +652,150 @@ RegisterNetEvent('qb-hijack:client:Hijack', function(targetId)
         DebugNotify("Target ped not found.", "error")
         return
     end
+
+    -- Resolve a target vehicle. Try current vehicle first, then the last
+    -- vehicle they were in. This is what enables "/fatjack right before they
+    -- get out at a store": even if they've already opened the door, the
+    -- engine is on the way out, etc., we still grab the right car.
     local targetVeh = GetVehiclePedIsIn(targetPed, false)
     if targetVeh == 0 then
-        DebugNotify("Target is not in a vehicle.", "error")
+        targetVeh = GetVehiclePedIsIn(targetPed, true) -- last vehicle
+    end
+    if targetVeh == 0 or not DoesEntityExist(targetVeh) then
+        DebugNotify("Target has no current or recent vehicle.", "error")
         return
     end
-    local targetCoords = GetEntityCoords(targetPed)
-    local spawnCoords = vector3(targetCoords.x + 10.0, targetCoords.y + 10.0, targetCoords.z)
+
+    -- Pull configurable parameters with sensible defaults so old configs
+    -- (or a missing fatjack module entry) don't break the command.
+    local fjCfg            = (Config.Modules and Config.Modules.fatjack) or {}
+    local baseDistance     = fjCfg.spawnDistance or 35.0
+    local distanceJitter   = fjCfg.spawnDistanceJitter or 8.0
+    local snapToRoad       = (fjCfg.snapToRoad ~= false) -- default true
+    local approachSpeed    = fjCfg.approachSpeed or 4.0
+    local waitForExit      = (fjCfg.waitForExit ~= false) -- default true: chill mode
+    local waitTimeout      = fjCfg.waitTimeout or 60000
+    local approachTimeout  = fjCfg.approachTimeout or 60000
+
+    -- Spawn position is anchored to the VEHICLE (not the player) so that the
+    -- ped appears near the parked car even if the target has already walked
+    -- a short distance away.
+    local vehCoords = GetEntityCoords(targetVeh)
+    local vehHeading = GetEntityHeading(targetVeh)
+    local rearHeading = (vehHeading + 180.0) % 360.0
+    local angleDeg = rearHeading + (math.random() * 180.0 - 90.0) -- +/-90deg cone behind the car
+    local angleRad = math.rad(angleDeg)
+    local distance = baseDistance + (math.random() * 2.0 - 1.0) * distanceJitter
+
+    local sx = vehCoords.x + math.sin(-angleRad) * distance
+    local sy = vehCoords.y + math.cos(-angleRad) * distance
+    local sz = vehCoords.z
+
+    if snapToRoad then
+        local found, nodeCoords = GetClosestVehicleNode(sx, sy, sz, 1, 3.0, 0)
+        if found then
+            sx, sy, sz = nodeCoords.x, nodeCoords.y, nodeCoords.z
+        end
+    end
+
+    local groundFound, groundZ = GetGroundZFor_3dCoord(sx, sy, sz + 5.0, false)
+    if groundFound then sz = groundZ end
+
     local fatModel = GetHashKey("a_m_m_fatlatin_01")
     RequestModel(fatModel)
     while not HasModelLoaded(fatModel) do
         Wait(10)
     end
-    local fatPed = CreatePed(4, fatModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0.0, true, false)
+
+    local facingHeading = math.deg(math.atan2(vehCoords.y - sy, vehCoords.x - sx)) - 90.0
+    local fatPed = CreatePed(4, fatModel, sx, sy, sz, facingHeading, true, false)
     DebugNotify("Fat ped spawned!", "success")
     SetEntityInvincible(fatPed, true)
     SetBlockingOfNonTemporaryEvents(fatPed, true)
-    TaskGoStraightToCoord(fatPed, targetCoords.x, targetCoords.y, targetCoords.z, 10.0, -1, 0.0, 0.0)
+
+    -- Initial walk task: head toward the vehicle's current position.
+    TaskGoStraightToCoord(fatPed, vehCoords.x, vehCoords.y, vehCoords.z, approachSpeed, -1, 0.0, 0.0)
+
     local spawnTime = GetGameTimer()
-    local attemptedHijack = false
+    local lastRetask = spawnTime
+
     CreateThread(function()
         while true do
             Wait(500)
-            local fatCoords = GetEntityCoords(fatPed)
-            local dist = #(fatCoords - targetCoords)
-            if dist < 5.0 and not attemptedHijack then
-                attemptedHijack = true
-                DebugNotify("Hijack: Initiating carjack sequence", "success")
-                SetVehicleDoorOpen(targetVeh, 0, false, false)
-                Wait(500)
-                local animDict = "veh@break_in@0h@p_m_one@"
-                local animName = "break_in_enter"
-                RequestAnimDict(animDict)
-                while not HasAnimDictLoaded(animDict) do
-                    Wait(10)
-                end
-                TaskPlayAnim(fatPed, animDict, animName, 8.0, -8.0, 2500, 0, 0, false, false, false)
-                Wait(2500)
-                if GetVehiclePedIsIn(targetPed, false) ~= 0 then
-                    TaskLeaveVehicle(targetPed, targetVeh, 0)
-                    SetPedToRagdoll(targetPed, 1500, 1500, 0, false, false, false)
-                end
-                Wait(500)
-                SetVehicleDoorShut(targetVeh, 0, false)
-                Wait(500)
-                TaskEnterVehicle(fatPed, targetVeh, 5000, -1, 2.0, 1, 0)
-                DebugNotify("Hijack: Fat ped now entering driver's seat", "success")
-                Wait(2000)
-                TaskVehicleDriveWander(fatPed, targetVeh, 60.0, 786603)
-                DebugNotify("Hijack: Fat ped is speeding away!", "success")
-                break
+
+            -- Bail if the vehicle has been deleted (despawned, blown up, etc.)
+            if not DoesEntityExist(targetVeh) then
+                DebugNotify("Hijack failed: Target vehicle no longer exists.", "error")
+                if DoesEntityExist(fatPed) then DeleteEntity(fatPed) end
+                return
             end
-            if (GetGameTimer() - spawnTime) > 20000 and not IsPedInAnyVehicle(fatPed, false) then
-                DebugNotify("Hijack failed: Fat ped despawned.", "error")
-                DeleteEntity(fatPed)
-                break
+
+            local currentVehCoords = GetEntityCoords(targetVeh)
+            local fatCoords = GetEntityCoords(fatPed)
+            local distToVeh = #(fatCoords - currentVehCoords)
+
+            -- If the car keeps moving (target is still driving around), re-task
+            -- the ped every couple seconds so it follows instead of marching to
+            -- a stale destination.
+            if (GetGameTimer() - lastRetask) > 2000 and distToVeh > 6.0 then
+                TaskGoStraightToCoord(fatPed, currentVehCoords.x, currentVehCoords.y, currentVehCoords.z, approachSpeed, -1, 0.0, 0.0)
+                lastRetask = GetGameTimer()
+            end
+
+            -- Approach timeout: ped has been walking for too long without
+            -- reaching the vehicle. Probably the target sped off too far.
+            if (GetGameTimer() - spawnTime) > approachTimeout and distToVeh > 6.0 then
+                DebugNotify("Hijack failed: Could not reach the vehicle in time.", "error")
+                if DoesEntityExist(fatPed) then DeleteEntity(fatPed) end
+                return
+            end
+
+            -- We're at the vehicle. Now decide what to do.
+            if distToVeh < 6.0 then
+                local driverSeatPed = GetPedInVehicleSeat(targetVeh, -1)
+                local driverIsPlayer = (driverSeatPed == targetPed)
+
+                if driverSeatPed ~= 0 and driverSeatPed ~= fatPed then
+                    -- Someone (probably the target) is still in the driver's seat.
+                    if waitForExit then
+                        -- Chill mode: idle nearby and wait. Re-issue a "go to"
+                        -- task occasionally so the ped doesn't drift, but
+                        -- don't yank anybody out.
+                        if (GetGameTimer() - spawnTime) > waitTimeout then
+                            DebugNotify("Hijack failed: Driver never left the vehicle.", "error")
+                            if DoesEntityExist(fatPed) then DeleteEntity(fatPed) end
+                            return
+                        end
+                        ClearPedTasks(fatPed)
+                        TaskGoStraightToCoord(fatPed, currentVehCoords.x, currentVehCoords.y, currentVehCoords.z, 1.0, -1, 0.0, 0.0)
+                    else
+                        -- Aggressive mode: yank the driver out (old behavior).
+                        DebugNotify("Hijack: Yanking driver out!", "success")
+                        SetVehicleDoorOpen(targetVeh, 0, false, false)
+                        Wait(500)
+                        if driverIsPlayer then
+                            TaskLeaveVehicle(driverSeatPed, targetVeh, 0)
+                            SetPedToRagdoll(driverSeatPed, 1500, 1500, 0, false, false, false)
+                        end
+                        Wait(1500)
+                    end
+                else
+                    -- Driver's seat is empty -- steal the car!
+                    DebugNotify("Hijack: Vehicle empty, stealing it now.", "success")
+                    TaskEnterVehicle(fatPed, targetVeh, 8000, -1, 2.0, 1, 0)
+                    Wait(3000)
+
+                    -- Once seated (or after the entry timeout), drive away.
+                    local fatPedVeh = GetVehiclePedIsIn(fatPed, false)
+                    if fatPedVeh == targetVeh then
+                        TaskVehicleDriveWander(fatPed, targetVeh, 60.0, 786603)
+                        DebugNotify("Hijack: Fat ped is speeding away!", "success")
+                    else
+                        DebugNotify("Hijack: Fat ped failed to enter the vehicle.", "error")
+                        if DoesEntityExist(fatPed) then DeleteEntity(fatPed) end
+                    end
+                    return
+                end
             end
         end
     end)
@@ -703,15 +804,17 @@ end)
 -- =========================
 -- dirty/client.lua
 -- =========================
-RegisterCommand("dirty", function()
+RegisterCommand(ModuleCmd('dirty', 'dirty', 'dirty'), function()
     local playerPed = PlayerPedId()
     local vehicle = GetVehiclePedIsIn(playerPed, false)
     if vehicle ~= 0 then
         local dirtLevel = Config.Modules.dirty and Config.Modules.dirty.dirtLevel or 15.0
-        SetVehicleDirtLevel(vehicle, dirtLevel)
         local vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
+        -- Server gates this on permission and broadcasts updateVehicleDirt
+        -- back to everyone (including us). Don't apply locally first or an
+        -- unauthorized player would still see their own car go dirty before
+        -- getting the "no permission" notify back.
         TriggerServerEvent('syncVehicleDirt', vehicleNetId, dirtLevel)
-        Framework.Notify('Your vehicle is now dirty!', 'success', 5000)
     else
         Framework.Notify('You are not in a vehicle!', 'error', 5000)
     end
@@ -723,7 +826,7 @@ AddEventHandler('updateVehicleDirt', function(vehicleNetId, dirtLevel)
         SetVehicleDirtLevel(vehicle, dirtLevel)
     end
 end)
-TriggerEvent('chat:addSuggestion', '/dirty', 'Make your current vehicle dirty (syncs with all players)')
+TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('dirty', 'dirty', 'dirty'), 'Make your current vehicle dirty (syncs with all players)')
 
 -- =========================
 -- astley/client/main.lua
@@ -804,10 +907,10 @@ end)
 -- =========================
 -- joinfak/fakejoin.lua
 -- =========================
-RegisterCommand("fakejoin", function(source, args, rawCommand)
+RegisterCommand(ModuleCmd('joinfak', 'join', 'fakejoin'), function(source, args, rawCommand)
     TriggerServerEvent("joinfak:sendFakeJoin")
 end, false)
-RegisterCommand("fakeleave", function(source, args, rawCommand)
+RegisterCommand(ModuleCmd('joinfak', 'leave', 'fakeleave'), function(source, args, rawCommand)
     TriggerServerEvent("joinfak:sendFakeLeave")
 end, false)
 
@@ -853,11 +956,33 @@ Citizen.CreateThread(function()
         end
 
         if Framework.Name == "qbox" then
-            -- Client-side group info isn't reliably exposed on Qbox; the
-            -- server is the source of truth. Show suggestions to everyone
-            -- here and let the server's HasPermission reject unauthorized
-            -- use. (Players just won't be able to actually run it.)
-            return true
+            -- Mirror the server-side check: read the local PlayerData.group
+            -- and compare it against Config.QboxGroupMap. If we can't read
+            -- the group (early load, missing field) fall back to showing
+            -- the suggestion so the player isn't locked out cosmetically;
+            -- the server still enforces the real check.
+            local playerGroup = Player.group
+                or (Player.metadata and Player.metadata.group)
+            if not playerGroup then return true end
+
+            local groupMap = Config.QboxGroupMap or { god = "admin", admin = "admin", mod = "mod", user = "user" }
+            local groupRanks = { god = 1, admin = 2, mod = 3, user = 4 }
+            local hierarchy = {"god", "admin", "mod", "user"}
+            local requiredIndex
+            for i, perm in ipairs(hierarchy) do
+                if perm == requiredPerm then requiredIndex = i break end
+            end
+            if not requiredIndex then return false end
+
+            for i = 1, requiredIndex do
+                local tier = hierarchy[i]
+                local mapped = groupMap[tier] or tier
+                if tier == "user" or mapped == "user" then return true end
+                if groupRanks[playerGroup] and groupRanks[playerGroup] <= (groupRanks[mapped] or 99) then
+                    return true
+                end
+            end
+            return false
         end
 
         return false
@@ -866,14 +991,14 @@ Citizen.CreateThread(function()
     -- Tirepop module commands
     if Config.Modules.tirepop and Config.Modules.tirepop.enabled then
         if hasPermissionForCommand('tirepop') then
-            TriggerEvent('chat:addSuggestion', '/tirepop', 'Pop a specific tire on a player\'s vehicle', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('tirepop', 'pop', 'tirepop'), 'Pop a specific tire on a player\'s vehicle', {
                 { name = 'id', help = 'Player ID (optional)' },
                 { name = 'tire', help = '1-4 or front/rear/left/right/all' }
             })
         end
         
         if hasPermissionForCommand('repairalltires') then
-            TriggerEvent('chat:addSuggestion', '/repairalltires', 'Repair all tires on a player\'s vehicle', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('tirepop', 'repair', 'repairalltires'), 'Repair all tires on a player\'s vehicle', {
                 { name = 'id', help = 'Player ID (optional)' }
             })
         end
@@ -882,7 +1007,7 @@ Citizen.CreateThread(function()
     -- Slide module commands
     if Config.Modules.slide and Config.Modules.slide.enabled then
         if hasPermissionForCommand('slidecar') then
-            TriggerEvent('chat:addSuggestion', '/slidecar', 'Make a player\'s car slide', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('slide', 'slide', 'slidecar'), 'Make a player\'s car slide', {
                 { name = 'id', help = 'Player ID' }
             })
         end
@@ -891,19 +1016,19 @@ Citizen.CreateThread(function()
     -- SPED module commands
     if Config.Modules.sped and Config.Modules.sped.enabled then
         if hasPermissionForCommand('explode') then
-            TriggerEvent('chat:addSuggestion', '/explode', 'Explode a player', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('sped', 'explode', 'explode'), 'Explode a player', {
                 { name = 'id', help = 'Player ID' }
             })
         end
         
         if hasPermissionForCommand('grenade') then
-            TriggerEvent('chat:addSuggestion', '/grenade', 'Throw a grenade at a player', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('sped', 'grenade', 'grenade'), 'Throw a grenade at a player', {
                 { name = 'id', help = 'Player ID' }
             })
         end
         
         if hasPermissionForCommand('seegrenade') then
-            TriggerEvent('chat:addSuggestion', '/seegrenade', 'Send a grenade notification to a player', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('sped', 'seegrenade', 'seegrenade'), 'Send a grenade notification to a player', {
                 { name = 'id', help = 'Player ID' }
             })
         end
@@ -912,31 +1037,33 @@ Citizen.CreateThread(function()
     -- Permanent Clean/Fix module commands
     if Config.Modules.permclean and Config.Modules.permclean.enabled then
         if hasPermissionForCommand('permclean') then
-            TriggerEvent('chat:addSuggestion', '/permclean', 'Toggle permanent clean for your vehicle')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('permclean', 'clean', 'permclean'), 'Toggle permanent clean for your vehicle')
         end
         
         if hasPermissionForCommand('permfix') then
-            TriggerEvent('chat:addSuggestion', '/permfix', 'Toggle permanent fix for your vehicle')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('permclean', 'fix', 'permfix'), 'Toggle permanent fix for your vehicle')
         end
         
-        TriggerEvent('chat:addSuggestion', '/tirefix', 'Fix all tires on your vehicle')
+        if hasPermissionForCommand('tirefix') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('tirepop', 'fix', 'tirefix'), 'Fix all tires on your vehicle')
+        end
     end
     
     -- Fake Join/Leave module commands
     if Config.Modules.joinfak and Config.Modules.joinfak.enabled then
         if hasPermissionForCommand('fakejoin') then
-            TriggerEvent('chat:addSuggestion', '/fakejoin', 'Send a fake join message')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('joinfak', 'join', 'fakejoin'), 'Send a fake join message')
         end
         
         if hasPermissionForCommand('fakeleave') then
-            TriggerEvent('chat:addSuggestion', '/fakeleave', 'Send a fake leave message')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('joinfak', 'leave', 'fakeleave'), 'Send a fake leave message')
         end
     end
     
     -- Client Drop module commands
     if Config.Modules.clientdrop and Config.Modules.clientdrop.enabled then
         if hasPermissionForCommand('client') then
-            TriggerEvent('chat:addSuggestion', '/client', 'Drop a player from the server', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('clientdrop', 'drop', 'client'), 'Drop a player from the server', {
                 { name = 'id', help = 'Player ID' }
             })
         end
@@ -945,7 +1072,7 @@ Citizen.CreateThread(function()
     -- NPC Gun module commands
     if Config.Modules.npcgun and Config.Modules.npcgun.enabled then
         if hasPermissionForCommand('aig') then
-            TriggerEvent('chat:addSuggestion', '/aig', 'Make nearby NPCs attack a player', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('npcgun', 'attack', 'aig'), 'Make nearby NPCs attack a player', {
                 { name = 'id', help = 'Player ID' }
             })
         end
@@ -954,55 +1081,65 @@ Citizen.CreateThread(function()
     -- Night's ERSS module commands
     if Config.Modules.nights_erss and Config.Modules.nights_erss.enabled then
         if hasPermissionForCommand('tgshoot') then
-            TriggerEvent('chat:addSuggestion', '/tgshoot', 'Get info about the AI shootout mode')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('nights_erss', 'info', 'tgshoot'), 'Get info about the AI shootout mode')
         end
         
-        TriggerEvent('chat:addSuggestion', '/toggleShoot', 'Toggle AI shootout mode')
+        if hasPermissionForCommand('toggleShoot') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('nights_erss', 'toggle', 'toggleShoot'), 'Toggle AI shootout mode')
+        end
     end
     
     -- Hijab module commands
     if Config.Modules.hijab and Config.Modules.hijab.enabled then
         if hasPermissionForCommand('hijack') then
-            TriggerEvent('chat:addSuggestion', '/hijack', 'Send a hijacker to steal a player\'s vehicle', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('hijab', 'hijack', 'hijack'), 'Send a hijacker to steal a player\'s vehicle', {
                 { name = 'id', help = 'Player ID' }
             })
         end
     end
     
     -- FatJack module commands
-    if hasPermissionForCommand('fatjack') then
-        TriggerEvent('chat:addSuggestion', '/fatjack', 'Send a fat person to hijack a player\'s vehicle', {
-            { name = 'id', help = 'Player ID' }
-        })
+    if Config.Modules.fatjack and Config.Modules.fatjack.enabled then
+        if hasPermissionForCommand('fatjack') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('fatjack', 'jack', 'fatjack'), 'Send a fat person to hijack a player\'s vehicle', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
     end
-    
+
     -- Fuel module commands
-    if hasPermissionForCommand('nofuel') then
-        TriggerEvent('chat:addSuggestion', '/nofuel', 'Deplete a player\'s vehicle fuel', {
-            { name = 'id', help = 'Player ID' }
-        })
+    if Config.Modules.fuel and Config.Modules.fuel.enabled then
+        if hasPermissionForCommand('nofuel') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('fuel', 'deplete', 'nofuel'), 'Deplete a player\'s vehicle fuel', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
     end
-    
+
     -- Jerk module commands
-    TriggerEvent('chat:addSuggestion', '/jerk', 'Play a special animation')
-    
-    if hasPermissionForCommand('jerkify') then
-        TriggerEvent('chat:addSuggestion', '/jerkify', 'Send jerk command info to a player', {
-            { name = 'id', help = 'Player ID (optional)' }
-        })
+    if Config.Modules.jerk and Config.Modules.jerk.enabled then
+        if hasPermissionForCommand('jerk') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('jerk', 'play', 'jerk'), 'Play a special animation')
+        end
+
+        if hasPermissionForCommand('jerkify') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('jerk', 'send', 'jerkify'), 'Send jerk command info to a player', {
+                { name = 'id', help = 'Player ID (optional)' }
+            })
+        end
     end
     
     -- Dirty module commands
     if Config.Modules.dirty and Config.Modules.dirty.enabled then
         if hasPermissionForCommand('dirty') then
-            TriggerEvent('chat:addSuggestion', '/dirty', 'Make your current vehicle dirty')
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('dirty', 'dirty', 'dirty'), 'Make your current vehicle dirty')
         end
     end
     
     -- Window Tint module commands
     if Config.Modules.tint and Config.Modules.tint.enabled then
         if hasPermissionForCommand('tint') then
-            TriggerEvent('chat:addSuggestion', '/tint', 'Apply window tint to your vehicle', {
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('tint', 'tint', 'tint'), 'Apply window tint to your vehicle', {
                 { name = 'level', help = '0=None, 1=Limo, 2=Light Smoke, 3=Dark Smoke, 4=Stock, 5=Pure Black, 6=Green' }
             })
         end
@@ -1010,14 +1147,22 @@ Citizen.CreateThread(function()
     
     -- Monkeycar module commands
     if Config.Modules.monkeycar and Config.Modules.monkeycar.enabled then
-        TriggerEvent('chat:addSuggestion', '/monkeycar', 'Spawn a monkey driving a random car')
+        if hasPermissionForCommand('monkeycar') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('monkeycar', 'spawn', 'monkeycar'), 'Spawn a monkey driving a random car')
+        end
+    end
+
+    -- /tmhelp (or whatever Config.HelpCommand is set to)
+    if hasPermissionForCommand('tmhelp') then
+        local helpCmd = (Config.HelpCommand and Config.HelpCommand ~= "" and Config.HelpCommand) or 'tmhelp'
+        TriggerEvent('chat:addSuggestion', '/' .. helpCmd, 'List every command from currently-enabled modules')
     end
 end)
 
 -- =========================
 -- tint/client.lua
 -- =========================
-RegisterCommand("tint", function(source, args, rawCommand)
+RegisterCommand(ModuleCmd('tint', 'tint', 'tint'), function(source, args, rawCommand)
     local playerPed = PlayerPedId()
     local vehicle = GetVehiclePedIsIn(playerPed, false)
     

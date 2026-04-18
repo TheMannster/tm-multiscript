@@ -3,6 +3,10 @@ Config = {}
 -- General Settings
 Config.Debug = false -- Enable debug mode for all modules
 
+-- Help command: lists every command from currently-enabled modules in chat.
+-- Defaults to god-only so it doubles as a quick admin overview.
+Config.HelpCommand = "tmhelp"
+
 -- Framework detection
 -- "auto"       -> auto-detect Qbox > QBCore > ESX by checking which resource is running
 -- "qbox"       -> force Qbox (uses qbx_core natives + ox_lib for notifications when present)
@@ -20,25 +24,38 @@ Config.Modules = {
         debug = false,
         displayName = "POP",
         soundVolume = 0.5,
-        soundDistance = 1.0
+        soundDistance = 1.0,
+        commands = {
+            pop    = "tirepop",        -- /tirepop [id] [tire|keyword]
+            repair = "repairalltires", -- /repairalltires [id]
+            fix    = "tirefix"         -- /tirefix (self, client-side)
+        }
     },
 
     -- Slide Car Module
     slide = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "Slidey Cars?",
-        forceAmount = 100.0 -- Force applied when sliding car
+        forceAmount = 100.0, -- Force applied when sliding car
+        commands = {
+            slide = "slidecar" -- /slidecar [id]
+        }
     },
 
     -- SPED Module
     sped = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "SPED",
         explosionRadius = 100.0,
         grenadeThrowDistance = 30.0,
-        beepEnabled = false
+        beepEnabled = false,
+        commands = {
+            explode    = "explode",    -- /explode [id]
+            grenade    = "grenade",    -- /grenade [id]
+            seegrenade = "seegrenade"  -- /seegrenade [id]
+        }
     },
 
     -- Permanent Clean/Fix Module
@@ -51,6 +68,10 @@ Config.Modules = {
         whitelist = {
             -- Add identifiers here, e.g. ["steam:11000010abcdefg"] = true
             ["license:ec708d5c72fc8633c3712148d25d15477b0861f8"] = true, -- TheVannster
+        },
+        commands = {
+            clean = "permclean", -- /permclean
+            fix   = "permfix"    -- /permfix
         }
     },
 
@@ -59,7 +80,11 @@ Config.Modules = {
         enabled = true,
         debug = false,
         displayName = "TheMannster",
-        fakeName = "Mannfreddi" -- Name to use for fake join/leave messages
+        fakeName = "Hero982", -- Name to use for fake join/leave messages
+        commands = {
+            join  = "fakejoin",  -- /fakejoin
+            leave = "fakeleave"  -- /fakeleave
+        }
     },
 
     -- Astley Module
@@ -67,6 +92,7 @@ Config.Modules = {
         enabled = true,
         debug = false,
         displayName = "RickAstley"
+        -- (no commands; this is a location-based easter egg)
     },
 
     -- Night's ERSS Module
@@ -74,29 +100,89 @@ Config.Modules = {
         enabled = false,
         debug = false,
         displayName = "tgshoot",
-        radius = 50.0
+        radius = 50.0,
+        commands = {
+            info   = "tgshoot",     -- /tgshoot (info chat message)
+            toggle = "toggleShoot"  -- /toggleShoot (client toggle)
+        }
     },
 
     -- Hijab Module
     hijab = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "Hijab",
-        maxAttempts = 5
+        maxAttempts = 5,
+        commands = {
+            hijack = "hijack" -- /hijack [id]
+        }
+    },
+
+    -- FatJack Module (sends a fat NPC to carjack a player)
+    fatjack = {
+        enabled = true,
+        debug = false,
+        displayName = "FatJack",
+        spawnDistance = 35.0,    -- How far from the target the fat ped spawns (units)
+        spawnDistanceJitter = 8.0, -- +/- random variation on spawnDistance
+        snapToRoad = true,       -- Try to spawn on the nearest road node (more realistic)
+        approachSpeed = 4.0,     -- How fast the fat ped walks/jogs to the target (1.0 walk, 2.0 run, 4.0+ sprint)
+
+        -- Behavior:
+        -- waitForExit = true  -> chill: ped waits until the driver's seat is empty
+        --                       (use this to send /fatjack right before someone
+        --                        gets out at a store; the fat guy will calmly
+        --                        walk up and steal the parked car).
+        -- waitForExit = false -> aggressive: ped yanks the driver out and steals
+        --                       the car immediately on arrival.
+        waitForExit = true,
+        waitTimeout = 60000,      -- ms to wait for the target to leave their vehicle (only used when waitForExit = true)
+        approachTimeout = 60000,  -- ms the ped will keep walking toward the vehicle before giving up
+
+        commands = {
+            jack = "fatjack" -- /fatjack [id]
+        }
+    },
+
+    -- Fuel Module (drains a player's fuel)
+    fuel = {
+        enabled = true,
+        debug = false,
+        displayName = "No Fuel",
+        commands = {
+            deplete = "nofuel" -- /nofuel [id]
+        }
+    },
+
+    -- Jerk Module (silly animation for self + a "send hint" command)
+    jerk = {
+        enabled = true,
+        debug = false,
+        displayName = "Jerk Animation",
+        commands = {
+            play = "jerk",    -- /jerk        (self-only animation, visible to all)
+            send = "jerkify"  -- /jerkify [id] (admin: tells a player about /jerk)
+        }
     },
 
     -- Client Drop Module
     clientdrop = {
         enabled = true,
         debug = false,
-        displayName = "Client?"
+        displayName = "Client?",
+        commands = {
+            drop = "client" -- /client [id]
+        }
     },
 
     -- Monkeycar Module
     monkeycar = {
         enabled = true,
         debug = false,
-        displayName = "Car o Monkeys"
+        displayName = "Car o Monkeys",
+        commands = {
+            spawn = "monkeycar" -- /monkeycar
+        }
     },
 
     -- NPC Gun Module
@@ -104,7 +190,10 @@ Config.Modules = {
         enabled = false,
         debug = false,
         displayName = "AIG",
-        attackRadius = 30.0
+        attackRadius = 30.0,
+        commands = {
+            attack = "aig" -- /aig [id]
+        }
     },
 
     -- Dirty Module
@@ -112,7 +201,10 @@ Config.Modules = {
         enabled = true,
         debug = false,
         displayName = "Dirty Vehicle",
-        dirtLevel = 15.0
+        dirtLevel = 15.0,
+        commands = {
+            dirty = "dirty" -- /dirty
+        }
     },
 
     -- Window Tint Module
@@ -120,7 +212,10 @@ Config.Modules = {
         enabled = true,
         debug = false,
         displayName = "Window Tint",
-        defaultTint = 1 -- Default tint level if not specified (1 = Limo)
+        defaultTint = 1, -- Default tint level if not specified (1 = Limo)
+        commands = {
+            tint = "tint" -- /tint [0-6]
+        }
     }
 }
 
@@ -134,10 +229,30 @@ Config.ESXGroupMap = {
     user  = "user"
 }
 
--- Command Permissions (if using QBCore / ESX)
+-- Same idea for Qbox. Qbox doesn't ship a "god" group, so by default we
+-- treat "admin" as the top tier (since that's Qbox's highest default group).
+-- Override if your server defines a custom god group.
+-- Note: the universal FiveM ACE `command.allow` (server owners usually have
+-- this) and ACE entries like `group.admin` / `qbx.admin` are also accepted.
+Config.QboxGroupMap = {
+    god   = "admin",
+    admin = "admin",
+    mod   = "mod",
+    user  = "user"
+}
+
+-- Command Permissions (if using QBCore / ESX / Qbox)
+-- These keys are the *internal* permission identifiers, NOT the actual
+-- command names. Renaming a command in Config.Modules.<x>.commands does
+-- NOT require changing anything here.
+--
+-- Tiers: god > admin > mod > user. Set to "user" (or omit entirely) to
+-- let everyone see/use the command. Self-only fun commands default to
+-- "user" so they show up for everyone -- override to lock them down.
 Config.CommandPermissions = {
-    tirepop = "god", -- QBCore permission required
+    tirepop = "god",
     repairalltires = "god",
+    tirefix = "admin",      -- self-only: fix your own tires (visible to all)
     slidecar = "god",
     explode = "god",
     grenade = "god",
@@ -149,10 +264,14 @@ Config.CommandPermissions = {
     client = "god",
     aig = "god",
     tgshoot = "god",
+    toggleShoot = "god",  -- self-only: toggle your AI shootout mode (visible to all)
     hijack = "god",
     fatjack = "god",
     nofuel = "admin",
     jerkify = "god",
+    jerk = "user",         -- self-only: play jerk animation (visible to all)
     dirty = "god",
-    tint = "admin" -- Admin permission required for window tint
+    tint = "admin",        -- self-only: tint your own vehicle
+    monkeycar = "admin",    -- self-only: spawn a monkey driving a car (visible to all)
+    tmhelp = "god"          -- /tmhelp: list every command from enabled modules
 } 
