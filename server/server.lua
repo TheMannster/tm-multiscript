@@ -5,13 +5,13 @@ if GetCurrentResourceName() ~= "tm-multiscript" then
 end
 
 -- Main server file for tm-multiscript
-print("^3 _______ __  __ ")
-print("^3|__   __|  \\/  |")
-print("^3   | |  | \\  / |")
-print("^3   | |  | |\\/| |")
-print("^3   | |  | |  | |")
-print("^3   |_|  |_|  |_|")
-print('^2[tm-multiscript] Server script started^7')
+print("^5 _______ __  __ ")
+print("^5|__   __|  \\/  |")
+print("^5   | |  | \\  / |")
+print("^5   | |  | |\\/| |")
+print("^5   | |  | |  | |")
+print("^5   |_|  |_|  |_|")
+print('^5[tm-multiscript]^2 Server script started^7')
 
 -- =========================
 -- Framework abstraction (auto-detects QBCore or ESX)
@@ -56,13 +56,13 @@ end
 detectFramework()
 
 if Framework.Name == "qbox" then
-    print('^2[tm-multiscript] Qbox detected and initialized^7')
+    print('^5[tm-multiscript]^7 Qbox detected and initialized^7')
 elseif Framework.Name == "qbcore" then
-    print('^2[tm-multiscript] QBCore detected and initialized^7')
+    print('^5[tm-multiscript]^7 QBCore detected and initialized^7')
 elseif Framework.Name == "esx" then
-    print('^2[tm-multiscript] ESX detected and initialized^7')
+    print('^5[tm-multiscript]^7 ESX detected and initialized^7')
 else
-    print('^3[tm-multiscript] No supported framework detected, running in standalone mode^7')
+    print('^5[tm-multiscript]^3 No supported framework detected, running in standalone mode^7')
 end
 
 -- Legacy alias so any older references to QBCore still resolve when QBCore is active.
@@ -88,11 +88,11 @@ Citizen.CreateThread(function()
     else
         fwLabel = 'Standalone (no framework detected)'
     end
-    print('^2[tm-multiscript] Framework: ' .. fwLabel .. '^7')
+    print('^5[tm-multiscript]^7 Framework: ^6' .. fwLabel .. '^7')
 
-    print('^2[tm-multiscript] Modules Loaded:^7')
+    print('^5[tm-multiscript]^7 Modules Loaded:^7')
     for _, name in ipairs(loadedModules) do
-        print('^2[tm-multiscript]   - ' .. name .. '^7')
+        print('^5[tm-multiscript]^7   - ^3' .. name .. '^7')
     end
 end)
 
@@ -801,7 +801,7 @@ PerformHttpRequest(versionURL, function(statusCode, response, headers)
             elseif cmp > 0 then
                 print("^3["..resourceName.."]^6 You are running a development version! (local: "..currentVersion..", github: "..latestVersion..")^7")
             else
-                print("^2["..resourceName.."] You are running the latest version. ("..currentVersion..")^7")
+                print("^5["..resourceName.."]^2 You are running the latest version. ^7("..currentVersion..")^7")
             end
         else
             print("^1["..resourceName.."] Could not parse latest version from GitHub.^7")
