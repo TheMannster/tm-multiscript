@@ -7,6 +7,11 @@ Config.Debug = false -- Enable debug mode for all modules
 -- Defaults to god-only so it doubles as a quick admin overview.
 Config.HelpCommand = "tmhelp"
 
+-- Chat autocomplete suggestions ('/' menu in the chatbox). Set to false to
+-- hide ALL of this resource's commands from the chat suggestions list.
+-- Commands themselves still work, they just won't autocomplete.
+Config.ChatSuggestions = false
+
 -- Framework detection
 -- "auto"       -> auto-detect Qbox > QBCore > ESX by checking which resource is running
 -- "qbox"       -> force Qbox (uses qbx_core natives + ox_lib for notifications when present)

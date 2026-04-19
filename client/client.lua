@@ -826,7 +826,9 @@ AddEventHandler('updateVehicleDirt', function(vehicleNetId, dirtLevel)
         SetVehicleDirtLevel(vehicle, dirtLevel)
     end
 end)
-TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('dirty', 'dirty', 'dirty'), 'Make your current vehicle dirty (syncs with all players)')
+if Config.ChatSuggestions ~= false then
+    TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('dirty', 'dirty', 'dirty'), 'Make your current vehicle dirty (syncs with all players)')
+end
 
 -- =========================
 -- astley/client/main.lua
@@ -918,6 +920,11 @@ end, false)
 -- Command Suggestions
 -- =========================
 Citizen.CreateThread(function()
+    -- Honor Config.ChatSuggestions (defaults to false). When disabled, all
+    -- of this resource's commands are hidden from the chat autocomplete --
+    -- they still work, they just won't show up in the / menu.
+    if Config.ChatSuggestions == false then return end
+
     -- Give the framework a moment to initialize before we check groups.
     Citizen.Wait(1000)
 
