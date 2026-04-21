@@ -72,7 +72,7 @@ Config.Modules = {
         cleanInterval = 15000, -- How often to clean vehicles (ms)
         whitelist = {
             -- Add identifiers here, e.g. ["steam:11000010abcdefg"] = true
-            ["license:ec708d5c72fc8633c3712148d25d15477b0861f8"] = true, -- TheVannster
+            -- ["license:yourlicensehexhere"] = true, -- YourName
         },
         commands = {
             clean = "permclean", -- /permclean

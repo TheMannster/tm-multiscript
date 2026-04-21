@@ -199,7 +199,12 @@ RegisterNetEvent('sped:explodePlayer')
 AddEventHandler('sped:explodePlayer', function()
     local ped = PlayerPedId()
     local coords = GetEntityCoords(ped)
-    AddExplosionWithUserVfx(coords.x, coords.y, coords.z, 2, 100.0, true, false, 1.0)
+    -- AddExplosion signature: (x, y, z, explosionType, damageScale, isAudible, isInvisible, cameraShake)
+    -- Type 2 = EXPLOSION_GRENADE. The previous code called AddExplosionWithUserVfx
+    -- (which needs a 9th vfxHash arg) with only 8 arguments, which shifted
+    -- isInvisible to true -- that's why nothing happened.
+    local dmg = (Config.Modules.sped and Config.Modules.sped.explosionRadius) or 1.0
+    AddExplosion(coords.x, coords.y, coords.z, 2, dmg, true, false, 1.0)
 end)
 RegisterNetEvent('sped:throwGrenadeAtPlayer')
 AddEventHandler('sped:throwGrenadeAtPlayer', function()
@@ -919,6 +924,52 @@ end, false)
 -- =========================
 -- Command Suggestions
 -- =========================
+-- FiveM's chat resource caches suggestions internally -- once you register
+-- one, it sticks around even after the resource that added it stops. We
+-- build an exhaustive list of every command this resource owns so we can
+-- both (a) remove stale suggestions on start, and (b) clean them up on
+-- resource stop. This is what makes Config.ChatSuggestions = false actually
+-- hide previously-added suggestions without needing to restart the chat
+-- resource or the whole server.
+local function CollectAllModuleCommands()
+    local names = {}
+    if Config.Modules then
+        for moduleKey, mod in pairs(Config.Modules) do
+            if mod and mod.commands then
+                for cmdKey, cmdName in pairs(mod.commands) do
+                    if type(cmdName) == 'string' and cmdName ~= '' then
+                        names[#names+1] = cmdName
+                    end
+                end
+            end
+        end
+    end
+    local helpCmd = (Config.HelpCommand and Config.HelpCommand ~= '' and Config.HelpCommand) or 'tmhelp'
+    names[#names+1] = helpCmd
+    return names
+end
+
+local function ClearAllChatSuggestions()
+    for _, name in ipairs(CollectAllModuleCommands()) do
+        TriggerEvent('chat:removeSuggestion', '/' .. name)
+    end
+end
+
+-- Clear any stale suggestions left behind by a previous run of this
+-- resource (including runs where Config.ChatSuggestions was true).
+Citizen.CreateThread(function()
+    Citizen.Wait(500) -- let the chat resource finish initializing
+    ClearAllChatSuggestions()
+end)
+
+-- Also clean up when the resource is stopped so other scripts / a later
+-- /refresh don't inherit leftover suggestions from us.
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        ClearAllChatSuggestions()
+    end
+end)
+
 Citizen.CreateThread(function()
     -- Honor Config.ChatSuggestions (defaults to false). When disabled, all
     -- of this resource's commands are hidden from the chat autocomplete --

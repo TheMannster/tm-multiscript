@@ -1,143 +1,132 @@
- _______ __  __ 
+```
+_______ __  __ 
 |__   __|  \/  |
    | |  | \  / |
    | |  | |\/| |
    | |  | |  | |
    |_|  |_|  |_|
+```
 
 # tm-multiscript
 
-**Version:** 0.8.2  
+**Version:** 0.9.0  
 **Author:** TheMannster
 
-## Description
+## What is this?
 
-`tm-multiscript` is a modular, all-in-one FiveM resource that combines several popular scripts into a single, easy-to-manage package. It features a robust configuration system, QBCore support, and fine-grained permission controls, including per-module whitelisting.
+Honestly? It's a pile of troll/meme FiveM scripts I wrote over time to mess with players on my server, all duct-taped together into one resource so I don't have to manage 15 folders.
 
-## Features
+If you came here looking for a clean, professional admin framework you're in the wrong place. This is closer to a prank toolkit with a config file.
 
-- **Modular Design:** Enable or disable each script/module via the config.
-- **QBCore Support:** Automatically detects and integrates with QBCore if available.
-- **Centralized Configuration:** All tunable values and permissions are managed in `config.lua`.
-- **Per-Module Whitelisting:** Allow specific users access to commands, even if they are not admins.
-- **Resource Name Protection:** The script will not run if renamed from `tm-multiscript`.
-- **Console and In-Game Command Support:** All commands can be run from both the server console and in-game (with proper permissions).
-- **Combined Functionality:** Includes tire pop, slide car, SPED, permanent clean/fix, fake join/leave, and more.
+Everything is modular — enable only the bits you want, leave the rest off. Works on Qbox, QBCore, ESX, or standalone (auto-detected). Permissions are gated per-command so your regular players can't nuke each other.
 
-## Installation
+## The scripts
 
-1. **Extract the resource** to your server's `resources` directory as `tm-multiscript`.
-2. **Ensure the resource** in your `server.cfg`:
+| Command | What it does |
+|---|---|
+| `/explode [id]` | Detonates a grenade on a player. Classic. |
+| `/grenade [id]` | Makes a nearby NPC chuck a grenade at them. Plausible deniability. |
+| `/seegrenade [id]` | Sends a fake "you see a grenade in their pocket" notification. Paranoia fuel. |
+| `/slidecar [id]` | Slides their car sideways for no reason. |
+| `/tirepop [id] [tire]` | Pops their tires. |
+| `/repairalltires [id]` | Un-pops their tires (mercy button). |
+| `/tirefix` | Fix your own tires (self). |
+| `/hijack [id]` | Sends waves of hijacker NPCs after a player. |
+| `/fatjack [id]` | Spawns a single fat guy who calmly jogs up from a street away and steals the target's car. Far funnier than it has any right to be. |
+| `/client [id]` | "Drops" a player with a fake Client disconnect message. |
+| `/nofuel [id]` | Drains their gas tank. |
+| `/dirty` | Makes your own car look like it rolled through a swamp. |
+| `/permclean` / `/permfix` | Keep your own car permanently clean and fixed. Whitelist-gated. |
+| `/tint [0-6]` | Sets window tint on your current vehicle, synced to everyone. |
+| `/monkeycar` | Spawns a random vehicle with a monkey driving it. |
+| `/aig [id]` | Summons NPCs to shoot at a player. |
+| `/fakejoin` / `/fakeleave` | Spams a fake join/leave message in chat. Great for causing confusion. |
+| `/jerk` | Plays a dumb animation on yourself. |
+| `/jerkify [id]` | DMs a player telling them about `/jerk`. Get them to incriminate themselves. |
+| `/toggleShoot` | Toggle AI shoot-at-you mode for yourself. |
+| `/tgshoot` | Info message for the above. |
+| Astley | Location-based Rick Astley easter egg. No command — just exists. |
+| `/tmhelp` | Lists every enabled command in chat. God-only. |
+
+All command names above are **defaults** — every single one can be renamed in `config.lua` under `Config.Modules.<module>.commands`.
+
+## Install
+
+1. Drop the folder into `resources/` as `tm-multiscript`. Don't rename it — the resource checks its own name and refuses to run if it's been changed.
+2. Add to `server.cfg`:
    ```
    ensure tm-multiscript
    ```
-3. **Do not rename the resource.** The script will not run if the folder name is changed.
+3. Open `config.lua` and turn on/off whatever modules you want.
 
-## Configuration
+## Config highlights
 
-All settings are managed in `config.lua`.  
-Key sections include:
+- `Config.Framework` — `"auto"` works for most people. Force `"qbox"`, `"qbcore"`, `"esx"`, or `"standalone"` if you want.
+- `Config.ChatSuggestions` — `false` hides every one of this resource's commands from the chat `/` autocomplete. They still work, they're just invisible. Great for surprise factor.
+- `Config.HelpCommand` — rename `/tmhelp` to whatever you want.
+- `Config.CommandPermissions` — tiers are `god > admin > mod > user`. Set something to `"user"` (or omit it) to let everyone use it. Keys in this table are the *internal* identifiers, not the renamed command names, so changing command names doesn't break permissions.
+- `Config.QboxGroupMap` / `Config.ESXGroupMap` — map the tier names onto whatever your framework actually uses.
 
-- **General Settings:**  
-  Enable debug mode, toggle QBCore support, etc.
+### Per-module whitelisting
 
-- **Modules:**  
-  Enable/disable each module, set display names, and adjust module-specific settings.
+Some modules (like `permclean`) take a whitelist so non-admins you trust can still use them:
 
-- **Command Permissions:**  
-  Set required QBCore permissions for each command.
+```lua
+permclean = {
+    ...
+    whitelist = {
+        ["license:yourlicensehexhere"] = true, -- YourName
+    }
+}
+```
 
-- **Whitelists:**  
-  For example, to allow specific users access to `permclean` commands:
-  ```lua
-  permclean = {
-      ...
-      whitelist = {
-          ["license:ec708d5c72fc8633c3712148d25d15477b0861f8"] = true, -- TheVannster
-      }
-  }
-  ```
+## Permissions (Qbox note)
 
-## Supported Modules
+Qbox doesn't ship a literal "god" group, so the resource maps the `"god"` tier onto Qbox's top group (`admin` by default) via `Config.QboxGroupMap`. It also accepts:
 
-- **Tire Pop:** Pop or repair vehicle tires via command.
-- **Slide Car:** Slide vehicles sideways for fun or admin purposes.
-- **SPED:** Explode or throw grenades at players.
-- **Permanent Clean/Fix:** Keep vehicles clean and fixed automatically.
-- **Fake Join/Leave:** Send fake join/leave messages to chat.
-- **Window Tint:** Apply and sync window tint for vehicles.
-- **Astley, Night's ERSS, and more:** Additional fun/admin scripts.
+- ACE `command.allow` (server owners usually have this)
+- `group.<tier>` and `qbx.<tier>` ACE entries
+- `PlayerData.group` matching the mapped name
 
-## Adding/Removing Modules
-
-- To **disable** a module, set its `enabled` property to `false` in the config.
-- To **add users** to a module's whitelist, add their Steam hex or FiveM license ID to the module's `whitelist` table.
-
-## Updating
-
-To update `tm-multiscript` to a new version:
-
-1. **Backup your current config.lua** if you have custom settings or whitelists.
-2. **Replace all files** in the `tm-multiscript` folder with the new version, except your `config.lua` (unless the update specifically requires changes to the config).
-3. **Review the changelog or update notes** (if provided) for any new config options or breaking changes.
-4. **Merge any new config options** from the updated `config.lua` into your existing config if needed.
-5. **Restart your server** or use `refresh` and `ensure tm-multiscript` in your server console.
-
-## Contribution
-
-- Pull requests and suggestions are welcome!
-- Please follow the existing code style and update the README and config documentation as needed.
+If you have god perm on a Qbox server and something won't let you run it, the server console will tell you why when `Config.Debug = true`.
 
 ## Credits
 
-- Combined and maintained by TheMannster
-- Includes code and ideas from various open-source FiveM scripts (see individual module comments for attribution)
+Everything written / stitched together by **TheMannster**. Individual modules borrow ideas from various open-source FiveM scripts — attribution is in the module comments where it applies.
 
 ## Changelog
 
+### v0.9.0
+- Added `/tmhelp` — lists every command from currently-enabled modules in chat (god-only by default, rename via `Config.HelpCommand`).
+- Added **FatJack** module (`/fatjack [id]`) — spawns a fat NPC a street away who jogs over, waits for the target to exit their car (configurable), then steals it. Tracks the vehicle if it moves. Road-snaps the spawn point for realism.
+- Added **Fuel** module (`/nofuel [id]`).
+- Added **Jerk** module (`/jerk` self animation, `/jerkify [id]` DM trap for admins).
+- **Every command in every module is now renamable** via `Config.Modules.<module>.commands`. Permission keys stay stable so renaming doesn't break perms.
+- Added `Config.ChatSuggestions` — global toggle to hide this resource's commands from the chat `/` autocomplete. Also clears ghost suggestions cached by the FiveM chat resource on resource start/stop.
+- Added Qbox support with full framework detection (`qbox > qbcore > esx > standalone`) and a proper `Config.QboxGroupMap` — fixes god/admin holders being denied commands on Qbox servers.
+- Fixed `/explode` being silently invisible and inaudible on modern FiveM artifacts (wrong native + arg-count mismatch).
+- Revamped console output colors (less green, more varied).
+
 ### v0.8.2
-- Added Window Tint module with `/tint [level]` command
-- Allows setting vehicle window tint from 0-6 with the following options:
-  - 0 = None
-  - 1 = Limo
-  - 2 = Light Smoke
-  - 3 = Dark Smoke
-  - 4 = Stock
-  - 5 = Pure Black
-  - 6 = Green
-- Tint changes are synced with all players
-- Added configuration options for default tint level
-- Improved window tint application for better compatibility with various vehicle types
+- Added Window Tint module (`/tint [0-6]`), synced to all players.
 
 ### v0.8.1
-- Added permission-based filtering for chat command suggestions
-- Commands are now only visible in the chat to players who have permission to use them
-- Command suggestions for disabled modules are no longer shown
-- Improved QBCore permission checking for command suggestions
+- Chat suggestions are now permission-filtered (only show commands the player can actually use).
+- Suggestions for disabled modules are hidden.
 
 ### v0.8.0
-- Created separate module for AIG command (previously part of monkeycar module)
-- Added dirty vehicle module with configurable dirt level
-- Fixed server-side error with fakejoin/fakeleave commands
-- Improved QBCore initialization and notification handling
-- Fixed client/server communication issues in several modules
-- Added proper permission checks for all commands
-- Enhanced error handling and added fallbacks for when QBCore is not available
-- Added better debug logging for troubleshooting
-- General code cleanup and optimization
+- Split AIG into its own module (`npcgun`).
+- Added `/dirty`.
+- Reworked permission checks, notifications, and QBCore init.
 
 ### v0.7.15
-- Added car_list.lua with a comprehensive list of vanilla GTA V traffic vehicles for use with commands like monkeycar
-- Fixed errors related to missing or empty car_list.lua
+- Added `car_list.lua` of vanilla GTA V traffic vehicles for `/monkeycar`.
 
 ### v0.7.14
-- Added /client [id] command to drop a specified player with a custom message, usable from both server console and in-game (with permissions)
-- Added clientdrop module configuration and permissions to config.lua
-- Updated permission system to use QBCore.Functions.HasPermission with proper hierarchy (god > admin > mod > user)
-- Debug prints for permission checks are now controlled by the global Config.Debug flag
-- Improved debug output for permission checks
-- General code cleanup and improved permission handling
+- Added `/client [id]`.
+- Permission hierarchy reworked (`god > admin > mod > user`).
+- Debug prints now gated behind `Config.Debug`.
 
 ---
 
-**Enjoy your all-in-one FiveM admin and fun script!** 
+Enjoy ruining someone's day.
