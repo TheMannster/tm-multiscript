@@ -164,10 +164,10 @@ local function HasPermission(source, command)
     local requiredPerm = Config.CommandPermissions[command]
     if not requiredPerm then return true end
 
-    -- Qbox: check ACE perms (incl. universal command.allow) and the player's
-    -- Qbox group. Qbox doesn't ship a "god" group by default -- its top tier
-    -- is "admin" -- so we map the QBCore-style hierarchy through
-    -- Config.QboxGroupMap (override per-server if you actually use a god group).
+    -- Qbox: supports both the "god" group AND ACE perms. ACE is Qbox's
+    -- preferred approach, but group-based checks still work. We accept
+    -- either, mapped through Config.QboxGroupMap for servers that use
+    -- custom group names.
     if Framework.Name == "qbox" then
         if IsPlayerAceAllowed(source, 'command.allow') then return true end
 
@@ -178,7 +178,7 @@ local function HasPermission(source, command)
         end
         if not requiredIndex then return false end
 
-        local groupMap = Config.QboxGroupMap or { god = "admin", admin = "admin", mod = "mod", user = "user" }
+        local groupMap = Config.QboxGroupMap or { god = "god", admin = "admin", mod = "mod", user = "user" }
 
         local playerGroup
         local okGP, ply = pcall(function() return Framework.Core:GetPlayer(source) end)

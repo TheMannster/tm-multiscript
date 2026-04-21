@@ -82,13 +82,13 @@ permclean = {
 
 ## Permissions (Qbox note)
 
-Qbox doesn't ship a literal "god" group, so the resource maps the `"god"` tier onto Qbox's top group (`admin` by default) via `Config.QboxGroupMap`. It also accepts:
+Qbox has a `god` group, but the preferred approach on Qbox is **ACE perms**. This resource accepts both — whichever your server is set up for:
 
 - ACE `command.allow` (server owners usually have this)
 - `group.<tier>` and `qbx.<tier>` ACE entries
-- `PlayerData.group` matching the mapped name
+- `PlayerData.group` matching the tier name (`god`, `admin`, `mod`, `user`)
 
-If you have god perm on a Qbox server and something won't let you run it, the server console will tell you why when `Config.Debug = true`.
+If your server uses different group names than the defaults, remap them in `Config.QboxGroupMap`. If you have god perm on a Qbox server and something still won't let you run it, set `Config.Debug = true` and the server console will tell you why.
 
 ## Credits
 

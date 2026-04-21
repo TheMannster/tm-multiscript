@@ -234,13 +234,15 @@ Config.ESXGroupMap = {
     user  = "user"
 }
 
--- Same idea for Qbox. Qbox doesn't ship a "god" group, so by default we
--- treat "admin" as the top tier (since that's Qbox's highest default group).
--- Override if your server defines a custom god group.
--- Note: the universal FiveM ACE `command.allow` (server owners usually have
--- this) and ACE entries like `group.admin` / `qbx.admin` are also accepted.
+-- Same idea for Qbox. Qbox supports both a "god" group AND ACE perms --
+-- ACE is the preferred approach on Qbox, but group-based checks still work.
+-- This resource accepts whichever your server is configured for:
+--   * ACE `command.allow` (server owners usually have this)
+--   * ACE entries like `group.god` / `group.admin` / `qbx.god` / `qbx.admin`
+--   * PlayerData.group matching the tier name
+-- Override the values below if your server uses custom group names.
 Config.QboxGroupMap = {
-    god   = "admin",
+    god   = "god",
     admin = "admin",
     mod   = "mod",
     user  = "user"
