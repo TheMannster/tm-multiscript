@@ -803,6 +803,27 @@ if Config.Modules.tint and Config.Modules.tint.enabled then
     end)
 end
 
+-- =========================
+-- Module: Cat Follow
+-- =========================
+-- Sends a friendly housecat to follow the target player. The cat is spawned
+-- on the target's client so it streams reliably to them and to nearby
+-- players, regardless of where the calling admin is on the map.
+if Config.Modules.catfollow and Config.Modules.catfollow.enabled then
+    RegisterCommand(ModuleCmd('catfollow', 'spawn', 'catfollow'), function(source, args, rawCommand)
+        if not HasPermission(source, 'catfollow') then
+            Notify(source, 'You do not have permission to use this command', 'error')
+            return
+        end
+
+        local targetId = tonumber(args[1])
+        if not ValidatePlayerId(source, targetId) then return end
+
+        TriggerClientEvent('catfollow:spawnCat', targetId)
+        Notify(source, 'Sent a cat to follow player ' .. targetId, 'success')
+    end, false)
+end
+
 -- Update check (GitHub)
 local resourceName = GetCurrentResourceName()
 local currentVersion = GetResourceMetadata(resourceName, 'version', 0)
@@ -904,6 +925,7 @@ do
             { perm = 'jerk',    cmdKey = 'play', default = 'jerk',    desc = 'Play a special animation (self)' },
             { perm = 'jerkify', cmdKey = 'send', default = 'jerkify', desc = 'Send jerk command info to a player [id, optional]' },
         },
+        catfollow = { { perm = 'catfollow', cmdKey = 'spawn', default = 'catfollow', desc = 'Send a friendly cat to follow a player around [id]' } },
     }
 
     local helpCmd = (Config.HelpCommand and Config.HelpCommand ~= "" and Config.HelpCommand) or 'tmhelp'

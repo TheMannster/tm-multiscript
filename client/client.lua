@@ -1199,6 +1199,15 @@ Citizen.CreateThread(function()
         end
     end
 
+    -- Cat Follow module commands
+    if Config.Modules.catfollow and Config.Modules.catfollow.enabled then
+        if hasPermissionForCommand('catfollow') then
+            TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('catfollow', 'spawn', 'catfollow'), 'Send a friendly cat to follow a player around', {
+                { name = 'id', help = 'Player ID' }
+            })
+        end
+    end
+
     -- /tmhelp (or whatever Config.HelpCommand is set to)
     if hasPermissionForCommand('tmhelp') then
         local helpCmd = (Config.HelpCommand and Config.HelpCommand ~= "" and Config.HelpCommand) or 'tmhelp'
@@ -1274,4 +1283,117 @@ AddEventHandler('updateVehicleTint', function(vehicleNetId, tintLevel)
             print("[tint] Updated tint for vehicle " .. vehicleNetId .. " to level " .. tintLevel)
         end
     end
-end) 
+end)
+
+-- =========================
+-- catfollow/client.lua
+-- =========================
+-- Spawns a friendly housecat near the target player and tasks it to follow
+-- them around. Pure visual gag -- the cat is harmless. The original 3D
+-- "pussy" text floating above the cat has been removed.
+if Config.Modules.catfollow and Config.Modules.catfollow.enabled then
+    local cfCfg = Config.Modules.catfollow
+    local activeCats = {}
+
+    -- The event runs on the TARGET's client so the cat streams reliably to
+    -- them (and to any nearby players) regardless of where the admin is.
+    RegisterNetEvent('catfollow:spawnCat', function()
+        local targetPed = PlayerPedId()
+        if not DoesEntityExist(targetPed) then return end
+
+        local catHash = GetHashKey(cfCfg.catModel or "a_c_cat_01")
+        RequestModel(catHash)
+        local timeout = 0
+        while not HasModelLoaded(catHash) and timeout < 100 do
+            Wait(100)
+            timeout = timeout + 1
+        end
+
+        if not HasModelLoaded(catHash) then
+            Framework.Notify('Failed to load cat model', 'error')
+            return
+        end
+
+        local targetCoords = GetEntityCoords(targetPed)
+        local spawnRadius = cfCfg.spawnRadius or 3.0
+        local offsetX = (math.random() * 2.0 - 1.0) * spawnRadius
+        local offsetY = (math.random() * 2.0 - 1.0) * spawnRadius
+        local sx, sy, sz = targetCoords.x + offsetX, targetCoords.y + offsetY, targetCoords.z
+
+        local found, groundZ = GetGroundZFor_3dCoord(sx, sy, sz + 10.0, false)
+        if found then sz = groundZ end
+
+        local catPed = CreatePed(4, catHash, sx, sy, sz, 0.0, true, true)
+
+        if DoesEntityExist(catPed) then
+            -- Friendly cat: don't flee, don't fight.
+            SetPedFleeAttributes(catPed, 0, false)
+            SetPedCombatAttributes(catPed, 17, false)
+
+            local hp = cfCfg.catHealth or 200
+            SetPedMaxHealth(catPed, hp)
+            SetEntityHealth(catPed, hp)
+            SetPedKeepTask(catPed, true)
+
+            local followOffset = cfCfg.followOffset or -1.0
+            local followSpeed  = cfCfg.followSpeed or 3.0
+            TaskFollowToOffsetOfEntity(catPed, targetPed, 0.0, followOffset, 0.0, followSpeed, -1, 2.0, true)
+
+            activeCats[catPed] = true
+
+            -- Periodically re-task the cat if it gets stuck or too far behind.
+            CreateThread(function()
+                local catEntity = catPed
+                local targetEntity = targetPed
+                local timeoutMs = cfCfg.followTimeoutMs or 600000
+                local startTime = GetGameTimer()
+                local lastCheckDistance = 0
+                local stuckTicks = 0
+                local teleportDistance = cfCfg.teleportDistance or 15.0
+
+                while DoesEntityExist(catEntity)
+                  and DoesEntityExist(targetEntity)
+                  and (GetGameTimer() - startTime) < timeoutMs do
+                    Wait(2000)
+
+                    if not IsPedInAnyVehicle(targetEntity, false) then
+                        local cc = GetEntityCoords(catEntity)
+                        local tc = GetEntityCoords(targetEntity)
+                        local distance = #(cc - tc)
+
+                        local isStuck = math.abs(distance - lastCheckDistance) < 0.5 and distance > 8.0
+                        if isStuck then stuckTicks = stuckTicks + 1 else stuckTicks = 0 end
+
+                        if distance > teleportDistance or stuckTicks > 2 then
+                            TaskFollowToOffsetOfEntity(catEntity, targetEntity, 0.0, followOffset, 0.0, followSpeed, -1, 2.0, true)
+                            stuckTicks = 0
+                        end
+
+                        lastCheckDistance = distance
+                    else
+                        -- Target's in a vehicle -- nothing useful to do, wait it out.
+                        Wait(3000)
+                    end
+                end
+
+                if DoesEntityExist(catEntity) then
+                    activeCats[catEntity] = nil
+                    DeleteEntity(catEntity)
+                end
+            end)
+        end
+
+        SetModelAsNoLongerNeeded(catHash)
+    end)
+
+    AddEventHandler('onResourceStop', function(resourceName)
+        if GetCurrentResourceName() == resourceName then
+            for catPed, _ in pairs(activeCats) do
+                if DoesEntityExist(catPed) then
+                    DeleteEntity(catPed)
+                end
+            end
+            activeCats = {}
+        end
+    end)
+end

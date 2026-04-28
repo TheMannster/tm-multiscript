@@ -15,7 +15,7 @@ _______ __  __
 </p>
 
 **Author:** TheMannster  
-**Version:** 0.10.0
+**Version:** 0.11.0
 
 ---
 
@@ -61,6 +61,7 @@ Everything is modular — enable only the bits you want, leave the rest off. Wor
 | `/permclean` / `/permfix` | Keep your own car permanently clean and fixed. Whitelist-gated. |
 | `/tint [0-6]` | Sets window tint on your current vehicle, synced to everyone. |
 | `/monkeycar` | Spawns a random vehicle with a monkey driving it. |
+| `/catfollow [id]` | Spawns a friendly housecat that trots after the target player. Pure visual gag. |
 | `/aig [id]` | Summons NPCs to shoot at a player. |
 | `/fakejoin` / `/fakeleave` | Spams a fake join/leave message in chat. Great for causing confusion. |
 | `/jerk` | Plays a dumb animation on yourself. |
@@ -129,6 +130,9 @@ Everything written / stitched together by **TheMannster**. Individual modules bo
 ---
 
 ## Changelog
+
+### v0.11.0
+- Added **Cat Follow** module (`/catfollow [id]`) — spawns a friendly housecat that trots after the target. Ported from the standalone `rappe` resource. The original floating 3D `pussy` text above the cat is gone, and the cat is now spawned on the target's client so it streams reliably to them and to nearby players regardless of where the calling admin is. Configurable model, follow speed/offset, HP, and follow timeout under `Config.Modules.catfollow`.
 
 ### v0.10.0
 - **NPC gun (AIG / `/aig`)** — Fixed server `TriggerClientEvent` so the victim’s client actually runs the attack logic. Replaced `FindFirstPed` iteration with `GetGamePool('CPed')` for reliable nearby NPCs; drivers and passengers in range can be pulled from vehicles to attack; default `attackRadius` increased (see `config.lua`). Optional `npcgun.debug` prints when no NPC is in range.

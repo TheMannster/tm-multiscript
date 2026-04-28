@@ -220,6 +220,25 @@ Config.Modules = {
         commands = {
             tint = "tint" -- /tint [0-6]
         }
+    },
+
+    -- Cat Follow Module (sends a housecat to follow a player around)
+    -- Originally a "cat attack" gag, but the cat is friendly -- it just
+    -- trots after the target like a creepy little stalker.
+    catfollow = {
+        enabled = true,
+        debug = false,
+        displayName = "Cat Follow",
+        catModel        = "a_c_cat_01", -- ped model to spawn
+        spawnRadius     = 20.0,          -- random +/- offset from target on spawn
+        followOffset    = -1.0,         -- distance behind the target to hold position
+        followSpeed     = 3.0,          -- how fast the cat moves to keep up
+        catHealth       = 200,          -- HP so the cat doesn't ragdoll/die from random bumps
+        teleportDistance = 15.0,        -- if cat falls more than this far behind, re-task it
+        followTimeoutMs  = 600000,      -- max time the cat will follow before despawning (ms; default 10 min)
+        commands = {
+            spawn = "catfollow" -- /catfollow [id]
+        }
     }
 }
 
@@ -279,5 +298,6 @@ Config.CommandPermissions = {
     dirty = "god",
     tint = "admin",        -- self-only: tint your own vehicle
     monkeycar = "admin",    -- self-only: spawn a monkey driving a car (visible to all)
+    catfollow = "god",      -- /catfollow [id]: send a cat to follow a player
     tmhelp = "god"          -- /tmhelp: list every command from enabled modules
 } 
