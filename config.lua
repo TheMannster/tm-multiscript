@@ -7,9 +7,8 @@ Config.Debug = false -- Enable debug mode for all modules
 -- Defaults to god-only so it doubles as a quick admin overview.
 Config.HelpCommand = "tmhelp"
 
--- Chat autocomplete suggestions ('/' menu in the chatbox). Set to false to
--- hide ALL of this resource's commands from the chat suggestions list.
--- Commands themselves still work, they just won't autocomplete.
+-- Chat autocomplete suggestions ('/' menu). Must be explicitly true to
+-- register suggestions; omit or leave false/nil to hide ALL commands here.
 Config.ChatSuggestions = false
 
 -- Framework detection
@@ -25,7 +24,7 @@ Config.UseQBCore = true -- DEPRECATED, kept for backward compat. If set to false
 Config.Modules = {
     -- Tire Pop Module
     tirepop = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "POP",
         soundVolume = 0.5,
@@ -102,7 +101,7 @@ Config.Modules = {
 
     -- Night's ERSS Module
     nights_erss = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "tgshoot",
         radius = 50.0,
@@ -192,10 +191,10 @@ Config.Modules = {
 
     -- NPC Gun Module
     npcgun = {
-        enabled = false,
+        enabled = true,
         debug = false,
         displayName = "AIG",
-        attackRadius = 30.0,
+        attackRadius = 55.0,
         commands = {
             attack = "aig" -- /aig [id]
         }

@@ -9,7 +9,7 @@ _______ __  __
 
 # tm-multiscript
 
-**Version:** 0.9.0  
+**Version:** 0.10.0  
 **Author:** TheMannster
 
 ## What is this?
@@ -62,7 +62,7 @@ All command names above are **defaults** — every single one can be renamed in 
 ## Config highlights
 
 - `Config.Framework` — `"auto"` works for most people. Force `"qbox"`, `"qbcore"`, `"esx"`, or `"standalone"` if you want.
-- `Config.ChatSuggestions` — `false` hides every one of this resource's commands from the chat `/` autocomplete. They still work, they're just invisible. Great for surprise factor.
+- `Config.ChatSuggestions` — set to **`true`** to register chat `/` autocomplete for this resource’s commands; omit, `false`, or `nil` hides them all. Commands still work when hidden.
 - `Config.HelpCommand` — rename `/tmhelp` to whatever you want.
 - `Config.CommandPermissions` — tiers are `god > admin > mod > user`. Set something to `"user"` (or omit it) to let everyone use it. Keys in this table are the *internal* identifiers, not the renamed command names, so changing command names doesn't break permissions.
 - `Config.QboxGroupMap` / `Config.ESXGroupMap` — map the tier names onto whatever your framework actually uses.
@@ -95,6 +95,10 @@ If your server uses different group names than the defaults, remap them in `Conf
 Everything written / stitched together by **TheMannster**. Individual modules borrow ideas from various open-source FiveM scripts — attribution is in the module comments where it applies.
 
 ## Changelog
+
+### v0.10.0
+- **NPC gun (AIG / `/aig`)** — Fixed server `TriggerClientEvent` so the victim’s client actually runs the attack logic. Replaced `FindFirstPed` iteration with `GetGamePool('CPed')` for reliable nearby NPCs; drivers and passengers in range can be pulled from vehicles to attack; default `attackRadius` increased (see `config.lua`). Optional `npcgun.debug` prints when no NPC is in range.
+- **Chat suggestions** — Suggestions register only when `Config.ChatSuggestions == true`. `false` / omitted / `nil` all hide this resource’s commands (fixes the old bug where a missing key still showed every suggestion due to Lua `nil == false`).
 
 ### v0.9.0
 - Added `/tmhelp` — lists every command from currently-enabled modules in chat (god-only by default, rename via `Config.HelpCommand`).

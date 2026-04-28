@@ -1,9 +1,10 @@
 {
-  "latest": "0.9.0",
+  "latest": "0.10.0",
   "changelogs": {
     "0.7.10": "Initial Release",
     "0.7.15": "Improved performance, added fix for Car o Monkeys",
     "0.8.2": "Added Window Tint module",
-    "0.9.0": "New modules (FatJack, Fuel, Jerk), /tmhelp command, renamable commands per module, Qbox support, /explode fix"
+    "0.9.0": "New modules (FatJack, Fuel, Jerk), /tmhelp command, renamable commands per module, Qbox support, /explode fix",
+    "0.10.0": "AIG/npcgun: fix server→client trigger, reliable CPed pool targeting, vehicle NPCs, higher default attackRadius; chat suggestions only when Config.ChatSuggestions=true (fixes nil showing all)"
   }
 }

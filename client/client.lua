@@ -358,59 +358,50 @@ end)
 -- =========================
 -- npcgun/client.lua
 -- =========================
-RegisterNetEvent('qb-aig:client:attack', function(targetServerId)
-    local myServerId = GetPlayerServerId(PlayerId())
-    if targetServerId ~= myServerId then return end
-    
+RegisterNetEvent('qb-aig:client:attack', function()
+    -- Only the attacked player's client receives this TriggerClientEvent; no payload needed.
     local targetPed = PlayerPedId()
     local targetCoords = GetEntityCoords(targetPed)
-    local attackRadius = Config.Modules.npcgun and Config.Modules.npcgun.attackRadius or 30.0
-    
-    -- Find a nearby pedestrian to attack the player
+    local attackRadius = Config.Modules.npcgun and Config.Modules.npcgun.attackRadius or 55.0
+
+    -- FindFirstPed skips many streamed ambient peds; use CPed pool + radius like the rest of this file.
     local closestPed, pedDist = nil, attackRadius
-    local handle, ped = FindFirstPed()
-    local success
-    repeat
-        if ped ~= targetPed 
-           and not IsPedAPlayer(ped) 
-           and not IsPedInAnyVehicle(ped) 
-           and not IsEntityDead(ped) then
-            local dist = #(targetCoords - GetEntityCoords(ped))
-            if dist < pedDist then
-                closestPed, pedDist = ped, dist
-            end
-        end
-        success, ped = FindNextPed(handle)
-    until not success
-    EndFindPed(handle)
-    
-    if closestPed then
-        if Config.Modules.npcgun and Config.Modules.npcgun.debug then
-            print("[npcgun] Found pedestrian to attack player")
-        end
-        GiveWeaponToPed(closestPed, GetHashKey('weapon_pistol'), 255, false, true)
-        TaskCombatPed(closestPed, targetPed, 0, 16)
-    end
-    
-    -- Also make vehicle occupants attack the player
-    local closestVeh = GetClosestVehicle(targetCoords.x, targetCoords.y, targetCoords.z, attackRadius, 0, 70)
-    if DoesEntityExist(closestVeh) then
-        local attackedCount = 0
-        local maxSeats = GetVehicleMaxNumberOfPassengers(closestVeh)
-        for seat = -1, maxSeats do
-            local occ = GetPedInVehicleSeat(closestVeh, seat)
-            if occ ~= 0 and not IsPedAPlayer(occ) and not IsEntityDead(occ) then
-                TaskLeaveVehicle(occ, closestVeh, 0)
-                Citizen.Wait(500)
-                GiveWeaponToPed(occ, GetHashKey('weapon_pistol'), 255, false, true)
-                TaskCombatPed(occ, targetPed, 0, 16)
-                attackedCount = attackedCount + 1
-                if Config.Modules.npcgun and Config.Modules.npcgun.debug then
-                    print("[npcgun] Vehicle occupant is now attacking player")
+    for _, ped in ipairs(GetGamePool('CPed')) do
+        if ped ~= targetPed and DoesEntityExist(ped) then
+            if not IsPedAPlayer(ped) and not IsEntityDead(ped) then
+                local dist = #(targetCoords - GetEntityCoords(ped))
+                if dist < pedDist then
+                    closestPed, pedDist = ped, dist
                 end
             end
         end
     end
+
+    if not closestPed then
+        if Config.Modules.npcgun and Config.Modules.npcgun.debug then
+            print('[npcgun] No ambient NPC within ' .. attackRadius .. ' m (try congested roads or bump attackRadius)')
+        end
+        return
+    end
+
+    if Config.Modules.npcgun and Config.Modules.npcgun.debug then
+        print('[npcgun] Assigned NPC attacker at ' .. ('%.1f'):format(pedDist) .. ' m')
+    end
+
+    SetBlockingOfNonTemporaryEvents(closestPed, false)
+    if IsPedInAnyVehicle(closestPed, false) then
+        local veh = GetVehiclePedIsIn(closestPed, false)
+        TaskLeaveVehicle(closestPed, veh, 256)
+        Citizen.Wait(450)
+        if DoesEntityExist(closestPed) and IsPedDeadOrDying(closestPed, true) then
+            return
+        end
+    end
+
+    local pistol = GetHashKey('weapon_pistol')
+    GiveWeaponToPed(closestPed, pistol, 120, false, true)
+    SetCurrentPedWeapon(closestPed, pistol, true)
+    TaskCombatPed(closestPed, targetPed, 0, 16)
 end)
 
 -- =========================
@@ -831,7 +822,7 @@ AddEventHandler('updateVehicleDirt', function(vehicleNetId, dirtLevel)
         SetVehicleDirtLevel(vehicle, dirtLevel)
     end
 end)
-if Config.ChatSuggestions ~= false then
+if Config.ChatSuggestions == true then
     TriggerEvent('chat:addSuggestion', '/' .. ModuleCmd('dirty', 'dirty', 'dirty'), 'Make your current vehicle dirty (syncs with all players)')
 end
 
@@ -928,8 +919,8 @@ end, false)
 -- one, it sticks around even after the resource that added it stops. We
 -- build an exhaustive list of every command this resource owns so we can
 -- both (a) remove stale suggestions on start, and (b) clean them up on
--- resource stop. This is what makes Config.ChatSuggestions = false actually
--- hide previously-added suggestions without needing to restart the chat
+-- resource stop. This is what makes Config.ChatSuggestions off (nil/false)
+-- actually hide previously-added suggestions without needing to restart the chat
 -- resource or the whole server.
 local function CollectAllModuleCommands()
     local names = {}
@@ -971,10 +962,8 @@ AddEventHandler('onResourceStop', function(resourceName)
 end)
 
 Citizen.CreateThread(function()
-    -- Honor Config.ChatSuggestions (defaults to false). When disabled, all
-    -- of this resource's commands are hidden from the chat autocomplete --
-    -- they still work, they just won't show up in the / menu.
-    if Config.ChatSuggestions == false then return end
+    -- Only when explicitly true: nil/false hide suggestions (unset config used to wrongly show all).
+    if Config.ChatSuggestions ~= true then return end
 
     -- Give the framework a moment to initialize before we check groups.
     Citizen.Wait(1000)
