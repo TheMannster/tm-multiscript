@@ -7,10 +7,17 @@ _______ __  __
    |_|  |_|  |_|
 ```
 
-# tm-multiscript
+<h1 align="center">tm-multiscript</h1>
 
-**Version:** 0.10.0  
-**Author:** TheMannster
+<p align="center">
+  <img alt="Lua" src="https://img.shields.io/badge/script-Lua-2C2D72?labelColor=222&style=flat-square" />
+  <img alt="FiveM / CFX" src="https://img.shields.io/badge/platform-FiveM%20%2F%20CFX-F40552?labelColor=222&style=flat-square" />
+</p>
+
+**Author:** TheMannster  
+**Version:** 0.10.0
+
+---
 
 ## What is this?
 
@@ -20,13 +27,28 @@ If you came here looking for a clean, professional admin framework you're in the
 
 Everything is modular — enable only the bits you want, leave the rest off. Works on Qbox, QBCore, ESX, or standalone (auto-detected). Permissions are gated per-command so your regular players can't nuke each other.
 
+---
+
+## Table of contents
+
+- [What is this?](#what-is-this)
+- [The scripts](#the-scripts)
+- [Install](#install)
+- [Config highlights](#config-highlights)
+- [Per-module whitelisting](#per-module-whitelisting)
+- [Permissions (Qbox note)](#permissions-qbox-note)
+- [Credits](#credits)
+- [Changelog](#changelog)
+
+---
+
 ## The scripts
 
 | Command | What it does |
-|---|---|
+|---------|--------------|
 | `/explode [id]` | Detonates a grenade on a player. Classic. |
 | `/grenade [id]` | Makes a nearby NPC chuck a grenade at them. Plausible deniability. |
-| `/seegrenade [id]` | Sends a fake "you see a grenade in their pocket" notification. Paranoia fuel. |
+| `/seegrenade [id]` | Sends a fake “you see a grenade in their pocket” notification. Paranoia fuel. |
 | `/slidecar [id]` | Slides their car sideways for no reason. |
 | `/tirepop [id] [tire]` | Pops their tires. |
 | `/repairalltires [id]` | Un-pops their tires (mercy button). |
@@ -50,14 +72,20 @@ Everything is modular — enable only the bits you want, leave the rest off. Wor
 
 All command names above are **defaults** — every single one can be renamed in `config.lua` under `Config.Modules.<module>.commands`.
 
+---
+
 ## Install
 
 1. Drop the folder into `resources/` as `tm-multiscript`. Don't rename it — the resource checks its own name and refuses to run if it's been changed.
 2. Add to `server.cfg`:
+
    ```
    ensure tm-multiscript
    ```
+
 3. Open `config.lua` and turn on/off whatever modules you want.
+
+---
 
 ## Config highlights
 
@@ -80,6 +108,8 @@ permclean = {
 }
 ```
 
+---
+
 ## Permissions (Qbox note)
 
 Qbox has a `god` group, but the preferred approach on Qbox is **ACE perms**. This resource accepts both — whichever your server is set up for:
@@ -90,9 +120,13 @@ Qbox has a `god` group, but the preferred approach on Qbox is **ACE perms**. Thi
 
 If your server uses different group names than the defaults, remap them in `Config.QboxGroupMap`. If you have god perm on a Qbox server and something still won't let you run it, set `Config.Debug = true` and the server console will tell you why.
 
+---
+
 ## Credits
 
 Everything written / stitched together by **TheMannster**. Individual modules borrow ideas from various open-source FiveM scripts — attribution is in the module comments where it applies.
+
+---
 
 ## Changelog
 
